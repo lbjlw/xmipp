@@ -1,4 +1,4 @@
-#!/bin/env python2
+#!/usr//bin/env python2
 
 from keras.callbacks import TensorBoard, ModelCheckpoint
 from keras.models import Model
