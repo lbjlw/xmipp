@@ -14,6 +14,7 @@ import string
 import sys
 import xmippLib
 import time
+from keras.models import load_model
 
 batch_size = 128 # Number of boxes per batch
 
@@ -70,11 +71,28 @@ if __name__=="__main__":
     maxPsi = float(sys.argv[3])
     mode = sys.argv[4]
     fnODir = sys.argv[5]
+    modelFn = sys.argv[6]
+    train = sys.argv[7]
     X, Y, Xdim = generateData(fnXmd, maxShift, maxPsi, mode)
 
-    model = constructModel(Xdim)
-    model.summary()
-    optimizer = Adam(lr=0.0001)
-    model.compile(loss='mean_absolute_error', optimizer='Adam')
-    model.fit(X, Y, batch_size=256, epochs=15, verbose=1, validation_split=0.1),
-    # model.save(os.path.join(fnODir,'nn_align_psi.h5'))
+    if (train=="train"):
+        print('Train mode')
+        model = constructModel(Xdim)
+        model.summary()
+        optimizer = Adam(lr=0.0001)
+        model.compile(loss='mean_absolute_error', optimizer='Adam')
+        history = model.fit(X, Y, batch_size=256, epochs=15, verbose=1, validation_split=0.1)
+        myValLoss=np.zeros((1))
+        myValLoss[0] = history.history['val_loss'][-1]
+        np.savetxt(os.path.join(fnODir,modelFn+'.txt'), myValLoss)
+        model.save(os.path.join(fnODir,modelFn+'.h5'))
+    else:
+        print('Predict mode')
+        model = load_model(os.path.join(fnODir,modelFn+'.h5'))
+        #loss, acc = model.evaluate(X, Y)
+        #print('loss=', loss, ' acc=', acc)
+        Ypred = model.predict(X)
+
+
+
+
