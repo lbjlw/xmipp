@@ -68,10 +68,10 @@ protected:
     bool skipBarrel;
     bool skipShift;
 
-    const std::string size_param = "-size";
-    const std::string step_param = "-step";
-    const std::string shift_param = "--shift";
-    const std::string barrel_param = "--barrel";
+    const std::string size_param = std::string("-size");
+    const std::string step_param = std::string("-step");
+    const std::string shift_param = std::string("--shift");
+    const std::string barrel_param = std::string("--barrel");
     FileName fn_out;
 
     Image<T> movie;
