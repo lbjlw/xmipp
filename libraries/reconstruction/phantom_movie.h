@@ -41,8 +41,6 @@ public:
     /** Run */
     void run();
 private:
-    enum class Mode { grid, barrel };
-
     void generateGrid();
     void addShiftBarrelDeformation();
     void addShift();
@@ -70,10 +68,10 @@ protected:
     bool skipBarrel;
     bool skipShift;
 
-    const String size_param = "-size";
-    const String step_param = "-step";
-    const String shift_param = "--shift";
-    const String barrel_param = "--barrel";
+    const std::string size_param = "-size";
+    const std::string step_param = "-step";
+    const std::string shift_param = "--shift";
+    const std::string barrel_param = "--barrel";
     FileName fn_out;
 
     Image<T> movie;
