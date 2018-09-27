@@ -120,7 +120,7 @@ def getSources(branch='devel', doPull=True):
     if checkProgram("git"):
         ok = cloneOrCheckout("xmippCore", branch, doPull, ok)
         ok = cloneOrCheckout("xmipp", branch, doPull, ok)
-        ok = cloneOrCheckout("xmippViz", branch, doPull, ok)
+        ok = cloneOrCheckout("xmippViz", "ds_fixingBugs01", doPull, ok)
         ok = cloneOrCheckout("scipion-em-xmipp", branch, doPull, ok)
     else:
         ok=False
