@@ -24,19 +24,18 @@ function update_plot (obj, init = false)
     case {h.b2}
       recalc = true;
   endswitch
-
   if (recalc || init)
     a1 = (get (h.a1, "value") - 0.5) / 10;
-    a2 = (get (h.a2, "value") - 0.5) / 100;
-    b1 = (get (h.b1, "value") - 0.5);
-    b2 = (get (h.b2, "value") - 0.5) / 12;
+    a2 = (get (h.a2, "value") - 0.5) / 10;
+    b1 = (get (h.b1, "value") - 0.5) / 10;
+    b2 = (get (h.b2, "value") - 0.5) / 10;
     set (h.a1_label, "string", sprintf ("a1: %.3f", a1));    
     set (h.a2_label, "string", sprintf ("a2: %.3f", a2));
     set (h.b1_label, "string", sprintf ("b1: %.3f", b1));
     set (h.b2_label, "string", sprintf ("b2: %.3f", b2));
     t=0:1:60;
-    x = a1.*t + a2.*t.*t + (cos(t/10))/10;
-    y = b1.*t + b2.*t.*t + (sin(t.*t))/5;
+    x = a1.*t + a2.*t.*t + (cos(t/10))/10
+    y = b1.*t + b2.*t.*t + (sin(t.*t))/5
     if (init)
       h.plot = plot (x, y);
       guidata (obj, h);
