@@ -34,16 +34,18 @@ void PhantomMovie<T>::defineParams()
 			" Distance between the lines/rows of the grid (before the transform is applied)");
 	addParamsLine("[--thickness <t=5>]                                   :"
 			" Thickness of the grid lines" );
-	addParamsLine("[" + shift_param + " <a1=-0.039> <a2=0.002> <a2=0.002> <a2=0.002>]:"
+	addParamsLine("[" + shift_param + " <a1=-0.039> <a2=0.002> <b1=-0.02> <b2=0.002>]:"
 			" Parameters of the shift. To see the result, we encourage you to use script attached with source files!");
 	addParamsLine("[" + barrel_param + " <k1_start=0.05> <k1_end=0.05> <k2_start=0.025> <k2_end=0.025>]:"
 			" Parameters of the barrel / pincushion transformation.");
 	addParamsLine("-o <output_file>                                      :"
 			" resulting movie");
-	addParamsLine("[--skipBarrel <skip=0>]                               :"
+	addParamsLine("[--skipBarrel]                                        :"
 				" skip applying the barrel deformation");
-	addParamsLine("[--skipShift <skip=0>]                                :"
+	addParamsLine("[--skipShift]                                         :"
 				" skip applying shift on each frame");
+	addParamsLine("[--shiftAfterBarrel]                                  :"
+					" if set, shift will be applied after barrel deformation (if present)");
 
 	addUsageLine("Create phantom movie with grid, using shift and barrel / pincushion transform.");
 	addUsageLine("Bear in mind that the following function of the shift is applied in 'backward'"
@@ -56,7 +58,7 @@ void PhantomMovie<T>::defineParams()
 	addUsageLine("For normalized coordinates ([-1..1]) its distance is given by:");
 	addUsageLine("r_out = r_in(1 + k1*(r_in)^2 + k2*(r_in)^4" );
 
-	addExampleLine("xmipp_phantom_movie -size 4096 4096 60 -step 50 50 --skipBarrel 1");
+	addExampleLine("xmipp_phantom_movie -size 4096 4096 60 -step 50 50 --skipBarrel");
 }
 
 template<typename T>
@@ -83,8 +85,9 @@ void PhantomMovie<T>::readParams()
 	k2_start = getDoubleParam(barrel_param_ch, 2);
 	k2_end = getDoubleParam(barrel_param_ch, 3);
 
-	skipBarrel = (bool)getIntParam("--skipBarrel");
-	skipShift = (bool)getIntParam("--skipShift");
+	skipBarrel = checkParam("--skipBarrel");
+	skipShift = checkParam("--skipShift");
+	shiftAfterBarrel = checkParam("--shiftAfterBarrel");
 
 	thickness = getIntParam("--thickness");
 	fn_out = getParam("-o");
@@ -127,26 +130,27 @@ void PhantomMovie<T>::addShiftBarrelDeformation()
 	T x_center = xdim / (T)2;
 	T y_center = ydim / (T)2;
 	for (size_t n = 0; n < ndim; ++n) {
-		std::cout << "Applying "
-				<< (skipShift ? "" : "shift and ")
-				<< "deformation " << n << std::endl;
 		size_t framePixels = xdim * ydim;
 		size_t frameBytes = framePixels * sizeof(T);
 		memcpy(tmp.data.data, &(movie.data[n * framePixels]), frameBytes);
 		T k1 = k1_start + n * (k1_end - k1_start) / (ndim-1);
 		T k2 = k2_start + n * (k2_end - k2_start) / (ndim-1);
+		std::cout << "k1 = " << k1 << " k2 = " << k2 << std::endl;
+		T x_shift = skipShift ? 0 : shiftX(ndim - n - 1); // 'reverse' the order (see doc)
+		T y_shift = skipShift ? 0 : shiftY(ndim - n - 1); // 'reverse' the order (see doc)
+		if (!skipShift) std::cout << "shiftX = " << x_shift << " shiftY = " << y_shift << std::endl;
 		for (size_t y = 0; y < ydim; ++y) {
-			T y_shift = skipShift ? 0 : shiftY(ndim - n - 1); // 'reverse' the order (see doc)
-			T y_norm = ((T)y - y_center + y_shift) / y_center;
+			T y_norm = ((T)y - y_center + (shiftAfterBarrel ? 0 : y_shift)) / y_center;
 			for (size_t x = 0; x < xdim; ++x) {
-				T x_shift = skipShift ? 0 : shiftX(ndim - n - 1); // 'reverse' the order (see doc)
-				T x_norm = ((T)x - x_center + x_shift) / x_center;
+				T x_norm = ((T)x - x_center + (shiftAfterBarrel ? 0 : x_shift)) / x_center;
 				T r_out = sqrt(x_norm*x_norm + y_norm*y_norm);
 				T r_out_2 = r_out * r_out;
 				T r_out_4 = r_out_2 * r_out_2;
 				T scale = (1 + k1 * r_out_2 + k2 * r_out_4);
-				T x_new = (x_norm * scale * x_center) + x_center;
-				T y_new = (y_norm * scale * y_center) + y_center;
+				T x_new = (x_norm * scale * x_center) + x_center
+						+ (shiftAfterBarrel ? x_shift : 0);
+				T y_new = (y_norm * scale * y_center) + y_center
+						+ (shiftAfterBarrel ? y_shift : 0);
 				size_t index = n * ydim * xdim + y * xdim + x;
 				movie.data[index] = bilinearInterpolation(tmp, x_new, y_new);
 			}

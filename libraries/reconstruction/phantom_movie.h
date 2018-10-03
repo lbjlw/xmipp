@@ -49,8 +49,8 @@ private:
     bool inRangeY(T y) { return (y >= 0) && (y < ydim); };
     bool inRange(T x, T y) { return inRangeX(x) && inRangeY(y); };
     inline T getValue(Image<T>& src, T x, T y);
-    T shiftX(T t) { return a1*t + a2*t*t + std::cos(t)/(T)10; };
-    T shiftY(T t) { return b1*t + b2*t*t + std::sin(t*t)/(T)5; };
+    T shiftX(T t) { return a1*t + a2*t*t + std::cos(t/T(10))/(T)10; };
+    T shiftY(T t) { return b1*t + b2*t*t + (std::sin(t*t))/(T)5; };
 protected:
     size_t xdim;
     size_t ydim;
@@ -67,6 +67,7 @@ protected:
 
     bool skipBarrel;
     bool skipShift;
+    bool shiftAfterBarrel;
 
     const std::string size_param = std::string("-size");
     const std::string step_param = std::string("-step");
