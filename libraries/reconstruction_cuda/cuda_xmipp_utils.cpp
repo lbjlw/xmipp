@@ -192,7 +192,7 @@ void createPlanFFTStream(int Xdim, int Ydim, int Ndim, int Zdim,
 }
 
 
-void gpuMalloc(void** d_data, int Nbytes)
+void gpuMalloc(void** d_data, size_t Nbytes)
 {
 	gpuErrchk(cudaMalloc(d_data, Nbytes));
 }
@@ -202,7 +202,7 @@ void gpuFree(void* d_data)
 	gpuErrchk(cudaFree(d_data));
 }
 
-void cpuMalloc(void** h_data, int Nbytes)
+void cpuMalloc(void** h_data, size_t Nbytes)
 {
 	gpuErrchk(cudaMallocHost(h_data, Nbytes));
 }

@@ -193,12 +193,12 @@ void computeCorrelations(size_t centerSize, size_t noOfImgs, std::complex<T>* h_
 
     size_t buffer1Size = std::min(maxFFTsInBuffer, noOfImgs);
     void* d_fftBuffer1;
-    gpuMalloc((void**) &d_fftBuffer1, buffer1Size * singleFFTBytes);
+    gpuErrchk(cudaMalloc((void**) &d_fftBuffer1, buffer1Size * singleFFTBytes));
 
     void* d_fftBuffer2;
     size_t buffer2Size = std::max((size_t)0,
             std::min(maxFFTsInBuffer, noOfImgs - buffer1Size));
-    gpuMalloc((void**) &d_fftBuffer2, buffer2Size * singleFFTBytes);
+    gpuErrchk(cudaMalloc((void**) &d_fftBuffer2, buffer2Size * singleFFTBytes));
 
     size_t buffer1Offset = 0;
     do {
