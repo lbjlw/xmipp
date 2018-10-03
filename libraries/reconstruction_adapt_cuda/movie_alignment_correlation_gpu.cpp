@@ -1150,19 +1150,20 @@ template<typename T>
 void ProgMovieAlignmentCorrelationGPU<T>::computeShifts(size_t N,
         const Matrix1D<T>& bX, const Matrix1D<T>& bY, const Matrix2D<T>& A) {
     setDevice(device);
-
-    T* correlations;
-    size_t centerSize = std::ceil(this->maxShift * 2 + 1);
-    computeCorrelations(centerSize, N, frameFourier, croppedOptSizeFFTX,
-            croppedOptSizeX, croppedOptSizeY, correlationBufferImgs,
-            croppedOptBatchSize, correlations);
-
     // since we are using different size of FFT, we need to scale results to
     // 'expected' size
     T localSizeFactorX = this->sizeFactor
             / (croppedOptSizeX / (T) inputOptSizeX);
     T localSizeFactorY = this->sizeFactor
             / (croppedOptSizeY / (T) inputOptSizeY);
+    size_t scaledMaxShift = std::floor((this->maxShift * this->sizeFactor) / localSizeFactorX);
+
+    T* correlations;
+    size_t centerSize = std::ceil(scaledMaxShift * 2 + 1);
+    computeCorrelations(centerSize, N, frameFourier, croppedOptSizeFFTX,
+            croppedOptSizeX, croppedOptSizeY, correlationBufferImgs,
+            croppedOptBatchSize, correlations);
+
 
     int idx = 0;
     MultidimArray<T> Mcorr(centerSize, centerSize);
