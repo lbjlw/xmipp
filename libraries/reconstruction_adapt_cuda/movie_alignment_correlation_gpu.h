@@ -148,6 +148,24 @@ private:
      */
     int getMaxFilterSize(Image<T> &frame);
 
+    /**
+     * After running this method, local shifts of all images loaded in
+     * the 'loadData' method should be determined
+     * Each implementation has to store these shifts internally
+     * @param movie input
+     * @param dark correction to be used
+     * @param gain correction to be used
+     */
+    void computeLocalShifts(MetaData& movie,
+            Image<T>& dark, Image<T>& gain) {
+    	REPORT_ERROR(ERR_NOT_IMPLEMENTED, "Not available");
+    }
+
+    /**
+	 * This method releases all resources used for global alignment
+	 */
+	void releaseGlobalAlignResources();
+
     void testFFT();
     void testFFTAndScale();
     void testScalingCpuOO();

@@ -63,6 +63,7 @@ void AProgMovieAlignmentCorrelation<T>::readParams() {
     xDRcorner = getIntParam("--cropDRCorner", 0);
     yDRcorner = getIntParam("--cropDRCorner", 1);
     useInputShifts = checkParam("--useInputShifts");
+    processLocalShifts = checkParam("--processLocalShifts");
     bin = getDoubleParam("--bin");
     BsplineOrder = getIntParam("--Bspline");
 
@@ -148,6 +149,8 @@ void AProgMovieAlignmentCorrelation<T>::defineParams() {
     addParamsLine(
             "  [--useInputShifts]           : Do not calculate shifts and use the ones in the input file");
     addParamsLine(
+			"  [--processLocalShifts]           : Calculate and correct local shifts");
+    addParamsLine(
             "  [--Bspline <order=3>]        : B-spline order for the final interpolation (1 or 3)");
     addParamsLine(
             "  [--outside <mode=wrap> <v=0>]: How to deal with borders (wrap, substitute by avg, or substitute by value)");
@@ -224,11 +227,6 @@ void AProgMovieAlignmentCorrelation<T>::solveEquationSystem(Matrix1D<T>& bXt,
     helper.w.initConstant(1);
 
     int it = 0;
-    double mean, varbX, varbY;
-    bX.computeMeanAndStddev(mean, varbX);
-    varbX *= varbX;
-    bY.computeMeanAndStddev(mean, varbY);
-    varbY *= varbY;
     if (verbose)
         std::cout << "\nSolving for the shifts ...\n";
     do {
@@ -242,12 +240,27 @@ void AProgMovieAlignmentCorrelation<T>::solveEquationSystem(Matrix1D<T>& bXt,
         ex = bX - helper.A * shiftX;
         ey = bY - helper.A * shiftY;
 
+        // 'remove' records that should be ignored
+        FOR_ALL_ELEMENTS_IN_MATRIX1D (ex) {
+        	if (VEC_ELEM(helper.w, i)==0.0)
+        	{
+        		VEC_ELEM(ex, i)=VEC_ELEM(ey, i)=0.0;
+        		VEC_ELEM(bX, i)=VEC_ELEM(bY, i)=0.0;
+        	}
+        }
+
         // Compute R2
-        double mean, vareX, vareY;
+        double mean, vareX, vareY, varbX, varbY;
         ex.computeMeanAndStddev(mean, vareX);
         vareX *= vareX;
         ey.computeMeanAndStddev(mean, vareY);
         vareY *= vareY;
+        // compute variance
+        bX.computeMeanAndStddev(mean, varbX);
+        varbX *= varbX;
+        bY.computeMeanAndStddev(mean, varbY);
+        varbY *= varbY;
+
         double R2x = 1 - vareX / varbX;
         double R2y = 1 - vareY / varbY;
         if (verbose)
@@ -255,20 +268,26 @@ void AProgMovieAlignmentCorrelation<T>::solveEquationSystem(Matrix1D<T>& bXt,
                     << std::endl;
 
         // Identify outliers
-        double oldWeightSum = helper.w.sum();
         double stddeveX = sqrt(vareX);
         double stddeveY = sqrt(vareY);
-        FOR_ALL_ELEMENTS_IN_MATRIX1D (ex)
+        size_t counter = 0;
+        FOR_ALL_ELEMENTS_IN_MATRIX1D (ex) {
+        	// remove outliers
             if (fabs(VEC_ELEM(ex, i)) > 3 * stddeveX
-                    || fabs(VEC_ELEM(ey, i)) > 3 * stddeveY)
+                    || fabs(VEC_ELEM(ey, i)) > 3 * stddeveY) {
                 VEC_ELEM(helper.w, i) = 0.0;
-        double newWeightSum = helper.w.sum();
-        if (newWeightSum == oldWeightSum) {
-            std::cout << "No outlier found\n";
+                counter++;
+            }
+            // set smaller weight to those far far away ...
+            else if (VEC_ELEM(helper.w, i) == 0.0) {
+                VEC_ELEM(helper.w, i) = 1/(fabs(VEC_ELEM(ex, i))+fabs(VEC_ELEM(ey, i))+0.01); //0.0;
+            }
+        }
+        if (0 == counter) {
+            std::cout << "No new outliers found\n";
             break;
         } else
-            std::cout << "Found " << (int) (oldWeightSum - newWeightSum)
-                    << " outliers\n";
+            std::cout << "Found " << counter << " new outliers\n";
 
         it++;
     } while (it < solverIterations);
@@ -406,7 +425,7 @@ void AProgMovieAlignmentCorrelation<T>::setZeroShift(MetaData& movie) {
 }
 
 template<typename T>
-int AProgMovieAlignmentCorrelation<T>::findShiftsAndStore(MetaData& movie,
+int AProgMovieAlignmentCorrelation<T>::findGlobalShiftsAndStore(MetaData& movie,
         Image<T>& dark, Image<T>& gain) {
     T targetOccupancy = 1.0; // Set to 1 if you want fmax maps onto 1/(2*newTs)
 
@@ -487,7 +506,11 @@ void AProgMovieAlignmentCorrelation<T>::run() {
             setZeroShift(movie);
         }
     } else {
-        bestIref = findShiftsAndStore(movie, dark, gain);
+        bestIref = findGlobalShiftsAndStore(movie, dark, gain);
+        releaseGlobalAlignResources();
+    }
+    if (processLocalShifts) {
+    	computeLocalShifts(movie, dark, gain);
     }
 
     size_t N, Ninitial;

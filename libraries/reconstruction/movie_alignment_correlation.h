@@ -76,6 +76,24 @@ private:
     void applyShiftsComputeAverage(const MetaData& movie, const Image<T>& dark,
             const Image<T>& gain, Image<T>& initialMic, size_t& Ninitial,
             Image<T>& averageMicrograph, size_t& N);
+
+    /**
+     * After running this method, local shifts of all images loaded in
+     * the 'loadData' method should be determined
+     * Each implementation has to store these shifts internally
+     * @param movie input
+     * @param dark correction to be used
+     * @param gain correction to be used
+     */
+    void computeLocalShifts(MetaData& movie,
+            Image<T>& dark, Image<T>& gain) {
+    	REPORT_ERROR(ERR_NOT_IMPLEMENTED, "Not available");
+    }
+
+    /**
+	 * This method releases all resources used for global alignment
+	 */
+	void releaseGlobalAlignResources();
 private:
     /**
      *  Fourier transforms of the input images, after cropping, gain and dark

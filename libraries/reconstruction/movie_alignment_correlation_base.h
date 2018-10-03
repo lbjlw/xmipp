@@ -103,6 +103,17 @@ private:
             const Matrix1D<T>& bY, const Matrix2D<T>& A) = 0;
 
     /**
+     * After running this method, local shifts of all images loaded in
+     * the 'loadData' method should be determined
+     * Each implementation has to store these shifts internally
+     * @param movie input
+     * @param dark correction to be used
+     * @param gain correction to be used
+     */
+    virtual void computeLocalShifts(MetaData& movie,
+            Image<T>& dark, Image<T>& gain) = 0;
+
+    /**
      * This method applies shifts stored in the metadata and computes 'average'
      * image
      * @param movie input
@@ -116,6 +127,11 @@ private:
     virtual void applyShiftsComputeAverage(const MetaData& movie,
             const Image<T>& dark, const Image<T>& gain, Image<T>& initialMic,
             size_t& Ninitial, Image<T>& averageMicrograph, size_t& N) = 0;
+
+    /**
+	 * This method releases all resources used for global alignment
+	 */
+	virtual void releaseGlobalAlignResources() = 0;
 
 private:
     /**
@@ -195,11 +211,12 @@ private:
 
     /**
      * Method finds shifts of images in the micrograph and stores them
+     * to metadata
      * @param movie to be processed
      * @param dark correction
      * @param gain correction
      */
-    int findShiftsAndStore(MetaData& movie, Image<T>& dark, Image<T>& gain);
+    int findGlobalShiftsAndStore(MetaData& movie, Image<T>& dark, Image<T>& gain);
 
     /**
      * Method to store all computed results to hard drive
@@ -269,6 +286,8 @@ protected:
     T outsideValue;
     /** size factor between original size of the images and downscaled images) */
     T sizeFactor;
+    /** If true, local shifts should be handled */
+    bool processLocalShifts;
 
 private:
     // Target sampling rate

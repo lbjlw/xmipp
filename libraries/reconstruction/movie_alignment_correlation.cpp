@@ -117,9 +117,17 @@ void ProgMovieAlignmentCorrelation<T>::computeShifts(size_t N,
 
             idx++;
         }
-        delete frameFourier[i];
     }
 }
+
+template<typename T>
+void ProgMovieAlignmentCorrelation<T>::releaseGlobalAlignResources() {
+	size_t size = frameFourier.size();
+	for (size_t n = 0; n < size; n++) {
+		delete frameFourier[n];
+	}
+}
+
 
 template<typename T>
 void ProgMovieAlignmentCorrelation<T>::applyShiftsComputeAverage(

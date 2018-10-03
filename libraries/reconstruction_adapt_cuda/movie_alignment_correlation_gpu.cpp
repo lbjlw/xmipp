@@ -38,7 +38,7 @@ void ProgMovieAlignmentCorrelationGPU<T>::defineParams() {
 template<typename T>
 void ProgMovieAlignmentCorrelationGPU<T>::show() {
     AProgMovieAlignmentCorrelation<T>::show();
-    std::cout << "Device:              " << device << std::endl;
+    std::cout << "Device:              " << device << " " << getUUID(device) << std::endl;
     std::cout << "Benchmark storage    " << (storage.empty() ? "Default" : storage) << std::endl;
 }
 
@@ -1186,7 +1186,12 @@ void ProgMovieAlignmentCorrelationGPU<T>::computeShifts(size_t N,
         }
     }
     Mcorr.data = NULL;
-    delete[] frameFourier;
+}
+
+template<typename T>
+void ProgMovieAlignmentCorrelationGPU<T>::releaseGlobalAlignResources() {
+	// GPU memory has been already freed
+	delete[] frameFourier;
 }
 
 // explicit specialization
