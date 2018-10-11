@@ -25,7 +25,7 @@ batch_size = 128 # Number of boxes per batch
 def loadData(mdIn, fnXmd, maxShift, maxPsi):
     X=None
     Nimgs = mdIn.size()
-    newImage = xmippLib.Image()
+#    newImage = xmippLib.Image()
     idx = 0
     for objId in mdIn:
         fnImg = mdIn.getValue(xmippLib.MDL_IMAGE,objId)
@@ -54,7 +54,7 @@ def loadData(mdIn, fnXmd, maxShift, maxPsi):
 #	strFnOut = ('%06d@'+fnODir)%(idx+1)
 #	newImage.write(os.path.join(strFnOut,'inputImages.stk'))
 
-	X[idx,:,:,0] = I.getData()
+	X[idx,:,:,0] = I.getData() + np.random.normal(0.0, 10.0, [Xdim, Xdim])
         idx+=1
 #        print("Ground Truth: psiDeg=", psiDeg," c=",c," s=",s," deltaX=",deltaX," deltaY=", deltaY)
 #    mdIn.write(fnXmd)
@@ -100,19 +100,32 @@ if __name__=="__main__":
     Xdim2=Xdim/2
     Ydim2=Ydim/2
     oneXprev = np.zeros((1,Xdim,Ydim,1),dtype=np.float64)
+    Xdef = np.zeros((1,Xdim,Ydim,1),dtype=np.float64)
     MIdentity = np.float32([[1.0,0.0,0.0],[0.0,1.0,0.0]])
+
+    flagRot=False
+    flagTilt=False
+    if os.path.exists(os.path.join(fnODir,'rot_iter%06d.h5'%(numIter))):
+        modelRot = load_model(os.path.join(fnODir,'rot_iter%06d.h5'%(numIter)))
+	print("ROT ", os.path.join(fnODir,'rot_iter%06d.h5'%(numIter)))
+	flagRot=True
+
+    if os.path.exists(os.path.join(fnODir,'tilt_iter%06d.h5'%(numIter))):
+        modelTilt = load_model(os.path.join(fnODir,'tilt_iter%06d.h5'%(numIter)))
+	print("TILT ", os.path.join(fnODir,'tilt_iter%06d.h5'%(numIter)))
+	flagTilt=True
 
     for i in range(numIter*2):
 
 	if i%2==0:
 	    #We are in psi prediction
             #model = load_model('/home/ajimenez/ScipionUserData/projects/testDeepAlignment/Runs/000152_XmippProtDeepAlignment3D/extra/psi_iter%06d.h5'%(i//2))
-	    #print(os.path.join(fnODir,'psi_iter%06d.h5'%(i//2)))
+	    print(os.path.join(fnODir,'psi_iter%06d.h5'%(i//2)))
 	    model = load_model(os.path.join(fnODir,'psi_iter%06d.h5'%(i//2)))
 	else:
 	    #We are in shift prediction
             #model = load_model('/home/ajimenez/ScipionUserData/projects/testDeepAlignment/Runs/000152_XmippProtDeepAlignment3D/extra/shift_iter%06d.h5'%(i//2))
-	    #print(os.path.join(fnODir,'shift_iter%06d.h5'%(i//2)))
+	    print(os.path.join(fnODir,'shift_iter%06d.h5'%(i//2)))
 	    model = load_model(os.path.join(fnODir,'shift_iter%06d.h5'%(i//2)))
 	
 	idx=0
@@ -154,8 +167,8 @@ if __name__=="__main__":
 	    if i==((numIter*2)-1):
 		Mstr = mdIn.getValue(xmippLib.MDL_COMMENT, objId)
 	        Mdef = str2matrix(Mstr)
-                Xdef = cv2.warpAffine(oneX,Mdef,(Xdim,Ydim))
-	        newImage.setData(Xdef)
+                Xdef[0,:,:,0] = cv2.warpAffine(oneX,Mdef,(Xdim,Ydim))
+	        newImage.setData(Xdef[0,:,:,0])
 	        strFnOut = ('%06d@'+fnODir)%(idx+1)
 	        newImage.write(os.path.join(strFnOut,'outputImages.stk'))
 		#mdIn.setValue(xmippLib.MDL_IMAGE, os.path.join(strFnOut,'outputImages.stk'), objId)
@@ -166,51 +179,27 @@ if __name__=="__main__":
 		mdIn.setValue(xmippLib.MDL_ANGLE_PSI, float(-psi), objId)
 		mdIn.setValue(xmippLib.MDL_SHIFT_X, float(Mdef2[0,2]), objId)
 		mdIn.setValue(xmippLib.MDL_SHIFT_Y, float(Mdef2[1,2]), objId)	
+    		
+		#Checking if we have the models for 3D reconstruction
+		if flagRot:
+		    YpredRot = modelRot.predict(Xdef)
+            	    c = YpredRot[0,0]
+            	    s = YpredRot[0,1]
+	    	    rot = np.rad2deg(np.arctan2(s,c))
+	    	    mdIn.setValue(xmippLib.MDL_ANGLE_ROT, float(rot), objId)
+		if flagTilt:
+		    YpredTilt = modelTilt.predict(Xdef)
+            	    c = YpredTilt[0,0]
+            	    s = YpredTilt[0,1]
+	    	    tilt = np.rad2deg(np.arctan2(s,c))
+	    	    mdIn.setValue(xmippLib.MDL_ANGLE_TILT, float(tilt), objId)
 
 	    idx+=1
 	mdIn.write(fnXmd)
 
 
-    #Checking if we have the models for 3D reconstruction
-    mdIn = xmippLib.MetaData(fnXmd)
-    if os.path.exists(os.path.join(fnODir,'rot_iter%06d.h5'%(numIter))):
-        model = load_model(os.path.join(fnODir,'rot_iter%06d.h5'%(numIter)))
-	idx=0
-	for objId in mdIn:
-	    oneX = X[idx,:,:,0]
-	    Mstr = mdIn.getValue(xmippLib.MDL_COMMENT, objId)
-	    Mprev = str2matrix(Mstr)
-            oneXprev[0,:,:,0] = cv2.warpAffine(oneX,Mprev,(Xdim,Ydim))
-	    Ypred = model.predict(oneXprev)
-            c = Ypred[0,0]
-            s = Ypred[0,1]
-	    rot = np.rad2deg(np.arctan2(s,c))
-	    if rot<0:
-		rot=360+rot
-	    #print(i,idx,rot)
-	    mdIn.setValue(xmippLib.MDL_ANGLE_ROT, float(rot), objId)
-	    idx+=1
-	mdIn.write(fnXmd)
 
-    mdIn = xmippLib.MetaData(fnXmd)
-    if os.path.exists(os.path.join(fnODir,'tilt_iter%06d.h5'%(numIter))):
-        model = load_model(os.path.join(fnODir,'tilt_iter%06d.h5'%(numIter)))
-	idx=0
-	for objId in mdIn:
-	    oneX = X[idx,:,:,0]
-	    Mstr = mdIn.getValue(xmippLib.MDL_COMMENT, objId)
-	    Mprev = str2matrix(Mstr)
-            oneXprev[0,:,:,0] = cv2.warpAffine(oneX,Mprev,(Xdim,Ydim))
-	    Ypred = model.predict(oneXprev)
-            c = Ypred[0,0]
-            s = Ypred[0,1]
-	    tilt = np.rad2deg(np.arctan2(s,c))
-	    if tilt<0:
-		tilt=360+tilt
-	    #print(i,idx,tilt)
-	    mdIn.setValue(xmippLib.MDL_ANGLE_TILT, float(tilt), objId)
-	    idx+=1
-	mdIn.write(fnXmd)
+
 
 
 

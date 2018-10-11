@@ -44,7 +44,7 @@ def generateData(fnXmd, maxShift, maxPsi, mode, Nrepeats=30):
             c = math.cos(psi)
             s = math.sin(psi)
             M = np.float32([[c,s,(1-c)*Xdim2-s*Ydim2+deltaX],[-s,c,s*Xdim2+(1-c)*Ydim2+deltaY]])
-            X[idx,:,:,0] = cv2.warpAffine(I.getData(),M,(Xdim,Ydim)) #+ np.random.normal(0.0, 10.0, [Xdim, Xdim])
+            X[idx,:,:,0] = cv2.warpAffine(I.getData(),M,(Xdim,Ydim)) + np.random.normal(0.0, 10.0, [Xdim, Xdim])
 
             if mode=="psi":
                 Y[idx,0]=c
@@ -85,6 +85,7 @@ if __name__=="__main__":
     mode = sys.argv[4]
     fnODir = sys.argv[5]
     modelFn = sys.argv[6]
+    numEpochs = int(sys.argv[7])
 
     print('Train mode')
     start_time = time()
@@ -96,7 +97,7 @@ if __name__=="__main__":
     model.summary()
     optimizer = Adam(lr=0.0001)
     model.compile(loss='mean_absolute_error', optimizer='Adam')
-    history = model.fit(X, Y, batch_size=256, epochs=2, verbose=1, validation_split=0.1)
+    history = model.fit(X, Y, batch_size=256, epochs=numEpochs, verbose=1, validation_split=0.1)
     myValLoss=np.zeros((1))
     myValLoss[0] = history.history['val_loss'][-1]
     np.savetxt(os.path.join(fnODir,modelFn+'.txt'), myValLoss)

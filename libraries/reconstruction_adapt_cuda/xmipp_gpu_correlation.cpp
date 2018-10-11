@@ -1683,6 +1683,21 @@ void ProgGpuCorrelation::run()
 			Nref=1;
 	}
 
+	String fnFinal=formatString("%s/%s",fnDir.c_str(),"example.txt");
+	std::ofstream myfile (fnFinal);
+	if (myfile.is_open()){
+	    myfile << matrixCorrCpu;
+	    myfile.close();
+	}
+
+	String fnFinalM=formatString("%s/%s",fnDir.c_str(),"exampleMirror.txt");
+	std::ofstream myfileM (fnFinalM);
+	if (myfileM.is_open()){
+		myfileM << matrixCorrCpu_mirror;
+		myfileM.close();
+	}
+
+
 	calculate_weights(matrixCorrCpu, matrixCorrCpu_mirror, corrTotalRow, weights, Nref, mdExpSize, mdInSize, weightsMax, simplifiedMd);
 
 	std::cerr << "Creating output metadatas..." << std::endl;
