@@ -49,6 +49,83 @@ void ProgMovieAlignmentCorrelationGPU<T>::readParams() {
     storage = this->getParam("--storage");
 }
 
+template<typename T>
+std::pair<T,T> getMaxBoundary(std::vector<std::pair<T,T> > shifts) {
+	T minX = std::numeric_limits<T>::max();
+	T maxX = std::numeric_limits<T>::min();
+	T minY = std::numeric_limits<T>::max();
+	T maxY = std::numeric_limits<T>::min();
+	for (const auto& s : shifts) {
+		minX = std::min(std::floor(s.first), minX);
+		maxX = std::max(std::ceil(s.first), maxX);
+		minY = std::min(std::floor(s.second), minY);
+		maxY = std::max(std::ceil(s.second), maxY);
+	}
+	std::cout << minX << " " << maxX << " " << minY << " " << maxY << std::endl;
+	return std::pair<T,T>(std::abs(maxX - minX), std::abs(maxY - minY));
+}
+
+template<typename T>
+void ProgMovieAlignmentCorrelationGPU<T>::getPatches(size_t x, size_t y,
+		T* data, std::pair<T,T>& border, std::vector<std::pair<T,T> >& shifts, T* result) {
+	size_t patchXSize = 350;
+	size_t patchYSize = 350;
+	size_t n = shifts.size();
+	size_t xFirst = border.first + (x * patchXSize);
+	size_t yFirst = border.second + (y * patchYSize);
+	for (size_t i = 0; i < n; ++i) {
+		size_t frameOffset = i * inputOptSizeX * inputOptSizeY;
+		size_t patchOffset = i * patchXSize * patchYSize;
+		int xShift = std::round(shifts.at(i).first);
+		int yShift = std::round(shifts.at(i).second);
+		printf("%d %d \n", xShift, yShift);
+		for (size_t y = 0; y < patchYSize; ++y) {
+			int srcY = yFirst + y - yShift; // assuming shift is smaller than offset
+			if ((srcY >=0) && (srcY < inputOptSizeY)) {
+				size_t srcIndex = frameOffset + (srcY * inputOptSizeX) - xShift + xFirst;
+				size_t destIndex = patchOffset + y * patchXSize;
+				memcpy(result + destIndex, data + srcIndex, patchXSize * sizeof(T));
+			} else {
+				printf("ERROR!!!!!!!!!!!\n");
+			}
+		}
+	}
+}
+
+template<typename T>
+void ProgMovieAlignmentCorrelationGPU<T>::computeLocalShifts(MetaData& movie,
+            Image<T>& dark, Image<T>& gain) {
+	std::vector<std::pair<T,T> >shifts;
+	int n = -1;
+	bool cropInput = (this->yDRcorner != -1);
+	int noOfImgs = this->nlast - this->nfirst + 1;
+	FOR_ALL_OBJECTS_IN_METADATA(movie)
+	{
+		n++;
+		if (n >= this->nfirst && n <= this->nlast) {
+			std::pair<T,T> s;
+			movie.getValue(MDL_SHIFT_X, s.first, __iter.objId);
+			movie.getValue(MDL_SHIFT_Y, s.second, __iter.objId);
+			shifts.push_back(s);
+		}
+	}
+	T* data = loadToRAM(movie, noOfImgs, dark, gain, cropInput);
+	std::cout << "compute local shifts" << std::endl;
+	for (const auto shift : shifts) {
+		std::cout << shift.first << " " << shift.second << std::endl;
+	}
+	std::pair<T,T> boundary = getMaxBoundary(shifts);
+	std::cout << boundary.first << " " << boundary.second << std::endl;
+
+	Image<T> patch(350,350, 1, noOfImgs);
+	for (int y=0; y < 10;++y ) {
+		for (int x = 0; x < 10; ++x) {
+			getPatches(x, y, data, boundary, shifts, patch.data.data);
+			patch.write("test" + std::to_string(y*10+x) + ".vol");
+		}
+	}
+}
+
 
 template<typename T>
 void ProgMovieAlignmentCorrelationGPU<T>::applyShiftsComputeAverage(
@@ -1172,7 +1249,7 @@ void ProgMovieAlignmentCorrelationGPU<T>::computeShifts(size_t N,
             size_t offset = idx * centerSize * centerSize;
             Mcorr.data = correlations + offset;
             Mcorr.setXmippOrigin();
-            bestShift(Mcorr, bX(idx), bY(idx), NULL, this->maxShift);
+            bestShift(Mcorr, bX(idx), bY(idx), NULL, scaledMaxShift);
             bX(idx) *= localSizeFactorX; // scale to expected size
             bY(idx) *= localSizeFactorY;
             if (this->verbose)

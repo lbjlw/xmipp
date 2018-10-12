@@ -157,9 +157,7 @@ private:
      * @param gain correction to be used
      */
     void computeLocalShifts(MetaData& movie,
-            Image<T>& dark, Image<T>& gain) {
-    	REPORT_ERROR(ERR_NOT_IMPLEMENTED, "Not available");
-    }
+            Image<T>& dark, Image<T>& gain);
 
     /**
 	 * This method releases all resources used for global alignment
@@ -211,6 +209,8 @@ private:
        return ss.str();
     }
 
+    void getPatches(size_t x, size_t y,
+    		T* data, std::pair<T,T>& border, std::vector<std::pair<T,T> >& shifts, T* result);
 
 private:
     // downscaled Fourier transforms of the input images
