@@ -124,7 +124,7 @@ void AProgMovieAlignmentCorrelation<T>::defineParams() {
     addParamsLine(
             "                               :+as a function of max_freq.");
     addParamsLine(
-            "  [--max_shift <s=-1>]         : Maximum shift allowed in pixels");
+            "  [--max_shift <s=10>]         : Maximum shift allowed in pixels");
     addParamsLine(
             "  [--max_freq <s=4>]           : Maximum resolution to align (in Angstroms)");
     addParamsLine("  [--sampling <Ts=1>]          : Sampling rate (A/pixel)");
