@@ -77,6 +77,18 @@ protected:
     void scaleLPF(const MultidimArray<T>& lpf, int xSize, int ySize,
             T targetOccupancy, MultidimArray<T>& result);
 
+
+    /**
+     * Method computes absolute shifts from relative shifts
+     * @param bX relative shifts in X dim
+     * @param bY relative shifts in Y dim
+     * @param A system matrix to be used
+     * @param shiftX absolute shifts in X dim
+     * @param shiftY absolute shifts in Y dim
+     */
+    void solveEquationSystem(Matrix1D<T>& bX, Matrix1D<T>& bY, Matrix2D<T>& A,
+            Matrix1D<T>& shiftX, Matrix1D<T>& shiftY);
+
 private:
     /**
      * After running this method, all relevant images from the movie should
@@ -149,17 +161,6 @@ private:
      */
     int findReferenceImage(size_t N, const Matrix1D<T>& shiftX,
             const Matrix1D<T>& shiftY);
-
-    /**
-     * Method computes absolute shifts from relative shifts
-     * @param bX relative shifts in X dim
-     * @param bY relative shifts in Y dim
-     * @param A system matrix to be used
-     * @param shiftX absolute shifts in X dim
-     * @param shiftY absolute shifts in Y dim
-     */
-    void solveEquationSystem(Matrix1D<T>& bX, Matrix1D<T>& bY, Matrix2D<T>& A,
-            Matrix1D<T>& shiftX, Matrix1D<T>& shiftY);
 
     /**
      * Method loads dark correction image

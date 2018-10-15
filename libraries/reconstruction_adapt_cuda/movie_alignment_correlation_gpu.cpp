@@ -68,28 +68,103 @@ std::pair<T,T> getMaxBoundary(std::vector<std::pair<T,T> > shifts) {
 template<typename T>
 void ProgMovieAlignmentCorrelationGPU<T>::getPatches(size_t x, size_t y,
 		T* data, std::pair<T,T>& border, std::vector<std::pair<T,T> >& shifts, T* result) {
-	size_t patchXSize = 350;
-	size_t patchYSize = 350;
 	size_t n = shifts.size();
-	size_t xFirst = border.first + (x * patchXSize);
-	size_t yFirst = border.second + (y * patchYSize);
+	size_t xFirst = border.first + (x * patchSizeX);
+	size_t yFirst = border.second + (y * patchSizeY);
 	for (size_t i = 0; i < n; ++i) {
 		size_t frameOffset = i * inputOptSizeX * inputOptSizeY;
-		size_t patchOffset = i * patchXSize * patchYSize;
+		size_t patchOffset = i * patchSizeX * patchSizeY;
 		int xShift = std::round(shifts.at(i).first);
 		int yShift = std::round(shifts.at(i).second);
-		printf("%d %d \n", xShift, yShift);
-		for (size_t y = 0; y < patchYSize; ++y) {
+//		printf("%d %d \n", xShift, yShift);
+		for (size_t y = 0; y < patchSizeY; ++y) {
 			int srcY = yFirst + y - yShift; // assuming shift is smaller than offset
 			if ((srcY >=0) && (srcY < inputOptSizeY)) {
 				size_t srcIndex = frameOffset + (srcY * inputOptSizeX) - xShift + xFirst;
-				size_t destIndex = patchOffset + y * patchXSize;
-				memcpy(result + destIndex, data + srcIndex, patchXSize * sizeof(T));
+				size_t destIndex = patchOffset + y * patchSizeX;
+				memcpy(result + destIndex, data + srcIndex, patchSizeX * sizeof(T));
 			} else {
 				printf("ERROR!!!!!!!!!!!\n");
 			}
 		}
 	}
+}
+
+template<typename T>
+void computeShifts(int device, size_t scaledMaxShift, size_t N, std::complex<T>* data,
+		size_t fftX, size_t x, size_t y, size_t bufferImgs, size_t batch,
+		const Matrix1D<T>& bX, const Matrix1D<T>& bY, const Matrix2D<T>& A) {
+	setDevice(device);
+//	// since we are using different size of FFT, we need to scale results to
+//	// 'expected' size
+	T localSizeFactorX = 1;
+//			/ (croppedOptSizeX / (T) inputOptSizeX);
+	T localSizeFactorY = 1;
+//			/ (croppedOptSizeY / (T) inputOptSizeY);
+//	size_t scaledMaxShift = std::floor((this->maxShift * this->sizeFactor) / localSizeFactorX);
+
+	T* correlations;
+	size_t centerSize = std::ceil(scaledMaxShift * 2 + 1);
+	computeCorrelations(centerSize, N, data, fftX,
+			x, y, bufferImgs,
+			batch, correlations);
+
+	int idx = 0;
+	MultidimArray<T> Mcorr(centerSize, centerSize);
+	for (size_t i = 0; i < N - 1; ++i) {
+		for (size_t j = i + 1; j < N; ++j) {
+			size_t offset = idx * centerSize * centerSize;
+			Mcorr.data = correlations + offset;
+			Mcorr.setXmippOrigin();
+			bestShift(Mcorr, bX(idx), bY(idx), NULL, scaledMaxShift);
+			bX(idx) *= localSizeFactorX; // scale to expected size
+			bY(idx) *= localSizeFactorY;
+			if (true)
+				std::cerr << "Frame " << i << " to Frame "
+						<< j  << " -> ("
+						<< bX(idx) << ","
+						<< bY(idx) << ")" << std::endl;
+			for (int ij = i; ij < j; ij++)
+				A(idx, ij) = 1;
+
+			idx++;
+		}
+	}
+	Mcorr.data = NULL;
+}
+
+template<typename T>
+void applyLocalShiftsComputeAverage(
+        T *data, size_t x, size_t y,
+        std::vector<std::pair<T, T> > globalShifts,
+        Matrix1D<T>& shiftX, Matrix1D<T>& shiftY,
+        int N, size_t counter) {
+    // Apply shifts and compute average
+    GeoShiftTransformer<T> transformer;
+    size_t size = globalShifts.size();
+    int device = 0;
+    Image<T> croppedFrame(x, y);
+    Image<T> shiftedFrame(x, y);
+    Image<T> averageMicrograph(x, y);
+    for (size_t n = 0; n < size; ++n)
+    {
+    	T totShiftX = shiftX(n);
+//				+ globalShifts.at(n).first; // no global shift yet, incoming data are 'aligned'
+    	T totShiftY = shiftY(n);
+//				+ globalShifts.at(n).second; // no global shift yet, incoming data are 'aligned'
+    	croppedFrame.data.data = data + (n * x * y);
+		std::cout << n << " shiftX=" << totShiftX << " shiftY="
+                    << totShiftY << std::endl;
+		transformer.initLazy(x,
+				y, 1, device);
+		transformer.applyShift(shiftedFrame(), croppedFrame(), -totShiftX, -totShiftY);
+		if (n == 0)
+			averageMicrograph() = shiftedFrame();
+		else
+			averageMicrograph() += shiftedFrame();
+	}
+    croppedFrame.data.data = NULL;
+    averageMicrograph.write("avg" + std::to_string(counter) + ".vol");
 }
 
 template<typename T>
@@ -111,18 +186,50 @@ void ProgMovieAlignmentCorrelationGPU<T>::computeLocalShifts(MetaData& movie,
 	}
 	T* data = loadToRAM(movie, noOfImgs, dark, gain, cropInput);
 	std::cout << "compute local shifts" << std::endl;
-	for (const auto shift : shifts) {
-		std::cout << shift.first << " " << shift.second << std::endl;
-	}
-	std::pair<T,T> boundary = getMaxBoundary(shifts);
-	std::cout << boundary.first << " " << boundary.second << std::endl;
+//	for (const auto shift : shifts) {
+//		std::cout << shift.first << " " << shift.second << std::endl;
+//	}
+	localShiftBorder = getMaxBoundary(shifts);
+	patchSizeX = patchSizeY = 350;
 
-	Image<T> patch(350,350, 1, noOfImgs);
-	for (int y=0; y < 10;++y ) {
-		for (int x = 0; x < 10; ++x) {
-			getPatches(x, y, data, boundary, shifts, patch.data.data);
-			patch.write("test" + std::to_string(y*10+x) + ".vol");
+	T* tmp = new T[noOfImgs * patchSizeX
+	            * std::max(patchSizeX, (((patchSizeX/2)+1)*2) * 2)]();
+	size_t noOfPatchesX = 2;
+	size_t noOfPatchesY = 2;
+//	Image<T> patch(patchSizeX, patchSizeY, 1, noOfImgs, data);
+	for (int y=0; y < noOfPatchesY;++y ) {
+		for (int x = 0; x < noOfPatchesX; ++x) {
+			getPatches(x, y, data, localShiftBorder, shifts, tmp);
+		    // scale and transform to FFT on GPU
+		    performFFTAndScale<T>(tmp, noOfImgs, patchSizeX,
+		            patchSizeY, 50, (((patchSizeX/2)+1)*2),
+		            patchSizeY, nullptr);
+		    size_t N = noOfImgs;
+		    Matrix2D<T> A(N * (N - 1) / 2, N - 1);
+			Matrix1D<T> bX(N * (N - 1) / 2), bY(N * (N - 1) / 2);
+			printf("Patch %d\n",y*noOfPatchesX+x);
+			::computeShifts(device, 25, noOfImgs, (std::complex<T>*)tmp,
+					(((patchSizeX/2)+1)*2), patchSizeX, patchSizeY,  60,  10,
+					bX, bY, A);
+			Matrix1D<T> shiftX, shiftY;
+			this->solveEquationSystem(bX, bY, A, shiftX, shiftY);
+
+			getPatches(x, y, data, localShiftBorder, shifts, tmp);
+			Image<T> zkouska(patchSizeX, patchSizeY,1, noOfImgs);
+			zkouska.data.data = tmp;
+			zkouska.write("zkouska.vol");
+			applyLocalShiftsComputeAverage(
+			        tmp, patchSizeX, patchSizeY,
+			        shifts,
+			        shiftX, shiftY,
+			        noOfImgs, (y*noOfPatchesX+x));
+//			break;
+
+			// Choose reference image as the minimax of shifts
+//			int bestIref = findReferenceImage(N, shiftX, shiftY);
+//			patch.write("test" + std::to_string(y*10+x) + ".vol");
 		}
+//		break;
 	}
 }
 
@@ -1220,7 +1327,7 @@ void ProgMovieAlignmentCorrelationGPU<T>::loadData(const MetaData& movie,
     // scale and transform to FFT on GPU
     performFFTAndScale((T*)frameFourier, noOfImgs, inputOptSizeX,
             inputOptSizeY, inputOptBatchSize, croppedOptSizeFFTX,
-            croppedOptSizeY, filter);
+            croppedOptSizeY, &filter);
 }
 
 template<typename T>

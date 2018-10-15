@@ -30,10 +30,10 @@
 #include "cuda_gpu_movie_alignment_correlation_kernels.cu"
 
 template void performFFTAndScale<float>(float* inOutData, int noOfImgs, int inX,
-    int inY, int inBatch, int outFFTX, int outY, MultidimArray<float> &filter);
+    int inY, int inBatch, int outFFTX, int outY, MultidimArray<float> *filter);
 template<typename T>
 void performFFTAndScale(T* inOutData, int noOfImgs, int inX, int inY,
-        int inBatch, int outFFTX, int outY, MultidimArray<T> &filter) {
+        int inBatch, int outFFTX, int outY, MultidimArray<T> *filter) {
     mycufftHandle handle;
     int counter = 0;
     std::complex<T>* h_result = (std::complex<T>*)inOutData;
@@ -41,10 +41,12 @@ void performFFTAndScale(T* inOutData, int noOfImgs, int inX, int inY,
     // sure it's big enough
     size_t bytesImgs = inX * inY * inBatch * sizeof(T);
     size_t bytesFFTs = outFFTX * outY * inBatch * sizeof(T) * 2; // complex
-    T* d_data = NULL;
-    T* d_filter = NULL;
-    gpuErrchk(cudaMalloc(&d_filter, filter.yxdim * sizeof(T)));
-    gpuErrchk(cudaMemcpy(d_filter, filter.data, filter.yxdim * sizeof(T), cudaMemcpyHostToDevice));
+    T* d_data = nullptr;
+    T* d_filter = nullptr;
+    if (filter) {
+    	gpuErrchk(cudaMalloc(&d_filter, filter->yxdim * sizeof(T)));
+    	gpuErrchk(cudaMemcpy(d_filter, filter->data, filter->yxdim * sizeof(T), cudaMemcpyHostToDevice));
+    }
     gpuErrchk(cudaMalloc(&d_data, std::max(bytesImgs, bytesFFTs)));
     GpuMultidimArrayAtGpu<T> imagesGPU(inX, inY, 1, inBatch, d_data);
     GpuMultidimArrayAtGpu<std::complex<T> > resultingFFT;

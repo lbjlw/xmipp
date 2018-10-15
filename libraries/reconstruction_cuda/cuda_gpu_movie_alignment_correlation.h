@@ -48,7 +48,7 @@
  */
 template<typename T>
 void performFFTAndScale(T* inOutData, int noOfImgs, int inX, int inY,
-        int inBatch, int outFFTX, int outY, MultidimArray<T> &filter);
+        int inBatch, int outFFTX, int outY, MultidimArray<T> *filter);
 
 /**
  * Perform scale of the Fourier domain. Possibly with filtering, normalization and

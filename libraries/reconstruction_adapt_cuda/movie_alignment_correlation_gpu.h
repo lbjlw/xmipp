@@ -251,6 +251,11 @@ private:
     int croppedOptSizeFFTX;
     int croppedOptBatchSize;
 
+    size_t patchSizeX;
+    size_t patchSizeY;
+
+    std::pair<T,T> localShiftBorder;
+
     /** Memory available for one cross-correlation batch */
     int correlationBufferSizeMB;
     /** No of images in one cross-correlation batch */
