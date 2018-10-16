@@ -212,6 +212,12 @@ private:
     void getPatches(size_t x, size_t y,
     		T* data, std::pair<T,T>& border, std::vector<std::pair<T,T> >& shifts, T* result);
 
+    void applyLocalShiftsComputeAverage(
+            T *data, size_t x, size_t y,
+            std::vector<std::pair<T, T> > globalShifts,
+            Matrix1D<T>& shiftX, Matrix1D<T>& shiftY,
+            int N, size_t counter, int device, int bestIref);
+
 private:
     // downscaled Fourier transforms of the input images
     std::complex<T>* frameFourier;

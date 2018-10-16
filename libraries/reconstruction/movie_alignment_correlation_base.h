@@ -89,6 +89,40 @@ protected:
     void solveEquationSystem(Matrix1D<T>& bX, Matrix1D<T>& bY, Matrix2D<T>& A,
             Matrix1D<T>& shiftX, Matrix1D<T>& shiftY);
 
+    /**
+         * Method to store relative shifts computed for the movie
+         * @param bestIref index of the reference image
+         * @param shiftX relative shifts in X dim to reference image
+         * @param shiftY relative shifts in Y dim to reference image
+         * @param movie to be stored
+         */
+        void storeRelativeShifts(int bestIref, const Matrix1D<T>& shiftX,
+                const Matrix1D<T>& shiftY, MetaData& movie);
+
+        /**
+         * Method finds a reference image, i.e. an image which has smallest relative
+         * shift to all other images.
+         * @param N no of images
+         * @param shiftX relative X shift of each image
+         * @param shiftY relative Y shift of each image
+         */
+        int findReferenceImage(size_t N, const Matrix1D<T>& shiftX,
+                const Matrix1D<T>& shiftY);
+
+
+        /**
+         * Method to compute sum of shifts of some image in respect to a reference
+         * image
+         * @param iref index of the reference image
+         * @param j index of the queried image
+         * @param shiftX relative shifts in X dim
+         * @param shiftY relative shifts in Y dim
+         * @param totalShiftX resulting shift in X dim
+         * @param totalShiftY resulting shift in Y dim
+         */
+        void computeTotalShift(int iref, int j, const Matrix1D<T> &shiftX,
+                const Matrix1D<T> &shiftY, T &totalShiftX, T &totalShiftY);
+
 private:
     /**
      * After running this method, all relevant images from the movie should
@@ -152,15 +186,6 @@ private:
      */
     void computeSizeFactor(T& targetOccupancy);
 
-    /**
-     * Method finds a reference image, i.e. an image which has smallest relative
-     * shift to all other images.
-     * @param N no of images
-     * @param shiftX relative X shift of each image
-     * @param shiftY relative Y shift of each image
-     */
-    int findReferenceImage(size_t N, const Matrix1D<T>& shiftX,
-            const Matrix1D<T>& shiftY);
 
     /**
      * Method loads dark correction image
@@ -195,16 +220,6 @@ private:
     void readMovie(MetaData& movie);
 
     /**
-     * Method to store relative shifts computed for the movie
-     * @param bestIref index of the reference image
-     * @param shiftX relative shifts in X dim to reference image
-     * @param shiftY relative shifts in Y dim to reference image
-     * @param movie to be stored
-     */
-    void storeRelativeShifts(int bestIref, const Matrix1D<T>& shiftX,
-            const Matrix1D<T>& shiftY, MetaData& movie);
-
-    /**
      * Sets all shifts in the movie to zero (0)
      * @param movie to update
      */
@@ -237,19 +252,6 @@ private:
      * @param movie to be used for correction
      */
     void correctLoopIndices(const MetaData& movie);
-
-    /**
-     * Method to compute sum of shifts of some image in respect to a reference
-     * image
-     * @param iref index of the reference image
-     * @param j index of the queried image
-     * @param shiftX relative shifts in X dim
-     * @param shiftY relative shifts in Y dim
-     * @param totalShiftX resulting shift in X dim
-     * @param totalShiftY resulting shift in Y dim
-     */
-    void computeTotalShift(int iref, int j, const Matrix1D<T> &shiftX,
-            const Matrix1D<T> &shiftY, T &totalShiftX, T &totalShiftY);
 
 protected:
     // Target size of the frames

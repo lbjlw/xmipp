@@ -104,7 +104,7 @@ void correlate(const T* __restrict__ in1, const T* __restrict__ in2,
     volatile int idx = blockIdx.x*blockDim.x + threadIdx.x;
     volatile int idy = blockIdx.y*blockDim.y + threadIdx.y;
 #endif
-    int a = 1-2*((idx+idy)&1); // center FFT, input must have be even
+    int a = 1-2*((idx+idy)&1); // center FFT, input must be even
 
     if (idx >= xDim || idy >= yDim ) return;
     size_t pixelIndex = idy*xDim + idx; // index within single image

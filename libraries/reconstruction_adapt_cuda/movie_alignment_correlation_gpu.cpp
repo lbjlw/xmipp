@@ -66,11 +66,11 @@ std::pair<T,T> getMaxBoundary(std::vector<std::pair<T,T> > shifts) {
 }
 
 template<typename T>
-void ProgMovieAlignmentCorrelationGPU<T>::getPatches(size_t x, size_t y,
+void ProgMovieAlignmentCorrelationGPU<T>::getPatches(size_t idx, size_t idy,
 		T* data, std::pair<T,T>& border, std::vector<std::pair<T,T> >& shifts, T* result) {
 	size_t n = shifts.size();
-	size_t xFirst = border.first + (x * patchSizeX);
-	size_t yFirst = border.second + (y * patchSizeY);
+	size_t xFirst = border.first + (idx * patchSizeX);
+	size_t yFirst = border.second + (idy * patchSizeY);
 	for (size_t i = 0; i < n; ++i) {
 		size_t frameOffset = i * inputOptSizeX * inputOptSizeY;
 		size_t patchOffset = i * patchSizeX * patchSizeY;
@@ -78,9 +78,9 @@ void ProgMovieAlignmentCorrelationGPU<T>::getPatches(size_t x, size_t y,
 		int yShift = std::round(shifts.at(i).second);
 //		printf("%d %d \n", xShift, yShift);
 		for (size_t y = 0; y < patchSizeY; ++y) {
-			int srcY = yFirst + y - yShift; // assuming shift is smaller than offset
+			size_t srcY = (yFirst + y) - yShift; // assuming shift is smaller than offset
 			if ((srcY >=0) && (srcY < inputOptSizeY)) {
-				size_t srcIndex = frameOffset + (srcY * inputOptSizeX) - xShift + xFirst;
+				size_t srcIndex = (frameOffset + (srcY * inputOptSizeX) + xFirst) - xShift ;
 				size_t destIndex = patchOffset + y * patchSizeX;
 				memcpy(result + destIndex, data + srcIndex, patchSizeX * sizeof(T));
 			} else {
@@ -109,6 +109,11 @@ void computeShifts(int device, size_t scaledMaxShift, size_t N, std::complex<T>*
 			x, y, bufferImgs,
 			batch, correlations);
 
+	Image<T> corrs(centerSize, centerSize, 1, (N*(N-1))/2);
+	corrs.data.data = correlations;
+	corrs.write("correlations.vol");
+	corrs.data.data = NULL;
+
 	int idx = 0;
 	MultidimArray<T> Mcorr(centerSize, centerSize);
 	for (size_t i = 0; i < N - 1; ++i) {
@@ -134,24 +139,25 @@ void computeShifts(int device, size_t scaledMaxShift, size_t N, std::complex<T>*
 }
 
 template<typename T>
-void applyLocalShiftsComputeAverage(
+void ProgMovieAlignmentCorrelationGPU<T>::applyLocalShiftsComputeAverage(
         T *data, size_t x, size_t y,
         std::vector<std::pair<T, T> > globalShifts,
         Matrix1D<T>& shiftX, Matrix1D<T>& shiftY,
-        int N, size_t counter) {
+        int N, size_t counter, int device, int bestIref) {
     // Apply shifts and compute average
     GeoShiftTransformer<T> transformer;
     size_t size = globalShifts.size();
-    int device = 0;
     Image<T> croppedFrame(x, y);
     Image<T> shiftedFrame(x, y);
     Image<T> averageMicrograph(x, y);
     for (size_t n = 0; n < size; ++n)
     {
-    	T totShiftX = shiftX(n);
+    	T totShiftX;// = shiftX(n);
 //				+ globalShifts.at(n).first; // no global shift yet, incoming data are 'aligned'
-    	T totShiftY = shiftY(n);
+    	T totShiftY;// = shiftY(n);
 //				+ globalShifts.at(n).second; // no global shift yet, incoming data are 'aligned'
+    	this->computeTotalShift(bestIref, n, shiftX, shiftY, totShiftX,
+    			totShiftY);
     	croppedFrame.data.data = data + (n * x * y);
 		std::cout << n << " shiftX=" << totShiftX << " shiftY="
                     << totShiftY << std::endl;
@@ -190,39 +196,43 @@ void ProgMovieAlignmentCorrelationGPU<T>::computeLocalShifts(MetaData& movie,
 //		std::cout << shift.first << " " << shift.second << std::endl;
 //	}
 	localShiftBorder = getMaxBoundary(shifts);
-	patchSizeX = patchSizeY = 350;
+	patchSizeX = patchSizeY = 400;
 
 	T* tmp = new T[noOfImgs * patchSizeX
 	            * std::max(patchSizeX, (((patchSizeX/2)+1)*2) * 2)]();
-	size_t noOfPatchesX = 2;
-	size_t noOfPatchesY = 2;
+	size_t noOfPatchesX = 10;
+	size_t noOfPatchesY = 10;
 //	Image<T> patch(patchSizeX, patchSizeY, 1, noOfImgs, data);
 	for (int y=0; y < noOfPatchesY;++y ) {
 		for (int x = 0; x < noOfPatchesX; ++x) {
 			getPatches(x, y, data, localShiftBorder, shifts, tmp);
 		    // scale and transform to FFT on GPU
 		    performFFTAndScale<T>(tmp, noOfImgs, patchSizeX,
-		            patchSizeY, 50, (((patchSizeX/2)+1)*2),
+		            patchSizeY, 50, patchSizeX/2+1,
 		            patchSizeY, nullptr);
 		    size_t N = noOfImgs;
 		    Matrix2D<T> A(N * (N - 1) / 2, N - 1);
 			Matrix1D<T> bX(N * (N - 1) / 2), bY(N * (N - 1) / 2);
 			printf("Patch %d\n",y*noOfPatchesX+x);
-			::computeShifts(device, 25, noOfImgs, (std::complex<T>*)tmp,
-					(((patchSizeX/2)+1)*2), patchSizeX, patchSizeY,  60,  10,
+			::computeShifts(device, this->maxShift / 2, noOfImgs, (std::complex<T>*)tmp,
+					patchSizeX/2+1, patchSizeX, patchSizeY,  60,  10,
 					bX, bY, A);
 			Matrix1D<T> shiftX, shiftY;
 			this->solveEquationSystem(bX, bY, A, shiftX, shiftY);
+			// Choose reference image as the minimax of shifts
+			int bestIref = this->findReferenceImage(N, shiftX, shiftY);
+
 
 			getPatches(x, y, data, localShiftBorder, shifts, tmp);
 			Image<T> zkouska(patchSizeX, patchSizeY,1, noOfImgs);
 			zkouska.data.data = tmp;
-			zkouska.write("zkouska.vol");
+			zkouska.write("zkouska" + std::to_string(y*N+x) + ".vol");
+			zkouska.data.data = NULL;
 			applyLocalShiftsComputeAverage(
 			        tmp, patchSizeX, patchSizeY,
 			        shifts,
 			        shiftX, shiftY,
-			        noOfImgs, (y*noOfPatchesX+x));
+			        noOfImgs, (y*noOfPatchesX+x), device, bestIref);
 //			break;
 
 			// Choose reference image as the minimax of shifts
