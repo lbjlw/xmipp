@@ -157,7 +157,7 @@ private:
      * @param gain correction to be used
      */
     void computeLocalShifts(MetaData& movie,
-            Image<T>& dark, Image<T>& gain);
+            Image<T>& dark, Image<T>& gain, int bestIref);
 
     /**
 	 * This method releases all resources used for global alignment
@@ -217,6 +217,17 @@ private:
             std::vector<std::pair<T, T> > globalShifts,
             Matrix1D<T>& shiftX, Matrix1D<T>& shiftY,
             int N, size_t counter, int device, int bestIref);
+
+    auto getTotalShift(
+    		const std::tuple<size_t,size_t, size_t>& tile,
+    		const std::vector<std::pair<T,T>>& globalShifts,
+    		const Matrix1D<T>& shiftX, const Matrix1D<T>& shiftY,
+    		int bestIref);
+
+    void applyLocalShiftsComputeAverage(
+            T *data, size_t x, size_t y, size_t xSize, size_t ySize,
+            std::map<std::tuple<size_t,size_t, size_t>, std::pair<T,T>> shifts,
+            int N, size_t counter, int device);
 
 private:
     // downscaled Fourier transforms of the input images

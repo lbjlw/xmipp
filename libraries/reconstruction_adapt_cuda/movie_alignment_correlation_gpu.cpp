@@ -74,13 +74,13 @@ void ProgMovieAlignmentCorrelationGPU<T>::getPatches(size_t idx, size_t idy,
 	for (size_t i = 0; i < n; ++i) {
 		size_t frameOffset = i * inputOptSizeX * inputOptSizeY;
 		size_t patchOffset = i * patchSizeX * patchSizeY;
-		int xShift = std::round(shifts.at(i).first);
-		int yShift = std::round(shifts.at(i).second);
+		int xShift = shifts.at(i).first;
+		int yShift = shifts.at(i).second;
 //		printf("%d %d \n", xShift, yShift);
 		for (size_t y = 0; y < patchSizeY; ++y) {
 			size_t srcY = (yFirst + y) - yShift; // assuming shift is smaller than offset
 			if ((srcY >=0) && (srcY < inputOptSizeY)) {
-				size_t srcIndex = (frameOffset + (srcY * inputOptSizeX) + xFirst) - xShift ;
+				size_t srcIndex = (frameOffset + (srcY * inputOptSizeX) + xFirst) - xShift;
 				size_t destIndex = patchOffset + y * patchSizeX;
 				memcpy(result + destIndex, data + srcIndex, patchSizeX * sizeof(T));
 			} else {
@@ -125,10 +125,10 @@ void computeShifts(int device, size_t scaledMaxShift, size_t N, std::complex<T>*
 			bX(idx) *= localSizeFactorX; // scale to expected size
 			bY(idx) *= localSizeFactorY;
 			if (true)
-				std::cerr << "Frame " << i << " to Frame "
-						<< j  << " -> ("
-						<< bX(idx) << ","
-						<< bY(idx) << ")" << std::endl;
+//				std::cerr << "Frame " << i << " to Frame "
+//						<< j  << " -> ("
+//						<< bX(idx) << ","
+//						<< bY(idx) << ")" << std::endl;
 			for (int ij = i; ij < j; ij++)
 				A(idx, ij) = 1;
 
@@ -158,12 +158,14 @@ void ProgMovieAlignmentCorrelationGPU<T>::applyLocalShiftsComputeAverage(
 //				+ globalShifts.at(n).second; // no global shift yet, incoming data are 'aligned'
     	this->computeTotalShift(bestIref, n, shiftX, shiftY, totShiftX,
     			totShiftY);
+    	totShiftX = globalShifts.at(n).first + totShiftX;
+    	totShiftY = globalShifts.at(n).second + totShiftY;
     	croppedFrame.data.data = data + (n * x * y);
-		std::cout << n << " shiftX=" << totShiftX << " shiftY="
-                    << totShiftY << std::endl;
+//		std::cout << n << " shiftX=" << totShiftX << " shiftY="
+//                    << totShiftY << std::endl;
 		transformer.initLazy(x,
 				y, 1, device);
-		transformer.applyShift(shiftedFrame(), croppedFrame(), -totShiftX, -totShiftY);
+		transformer.applyShift(shiftedFrame(), croppedFrame(), totShiftX, totShiftY);
 		if (n == 0)
 			averageMicrograph() = shiftedFrame();
 		else
@@ -174,9 +176,54 @@ void ProgMovieAlignmentCorrelationGPU<T>::applyLocalShiftsComputeAverage(
 }
 
 template<typename T>
+void ProgMovieAlignmentCorrelationGPU<T>::applyLocalShiftsComputeAverage(
+        T *data, size_t x, size_t y, size_t xSize, size_t ySize,
+        std::map<std::tuple<size_t,size_t, size_t>, std::pair<T,T>> shifts,
+        int N, size_t counter, int device) {
+    // Apply shifts and compute average
+    GeoShiftTransformer<T> transformer;
+    size_t size = N;
+    Image<T> croppedFrame(xSize, ySize);
+    Image<T> shiftedFrame(xSize, ySize);
+    Image<T> averageMicrograph(xSize, ySize);
+    for (size_t n = 0; n < size; ++n)
+    {
+    	T totShiftX = shifts.at(std::make_tuple(x,y,n)).first;
+    	T totShiftY = shifts.find(std::make_tuple(x,y,n))->second.second;
+    	croppedFrame.data.data = data + (n * xSize * ySize);
+//		std::cout << n << " shiftX=" << totShiftX << " shiftY="
+//                    << totShiftY << std::endl;
+		transformer.initLazy(xSize,	ySize, 1, device);
+		transformer.applyShift(shiftedFrame(), croppedFrame(), totShiftX, totShiftY);
+		if (n == 0)
+			averageMicrograph() = shiftedFrame();
+		else
+			averageMicrograph() += shiftedFrame();
+	}
+    croppedFrame.data.data = NULL;
+    averageMicrograph.write("kontrola" + std::to_string(counter) + ".vol");
+}
+
+template<typename T>
+auto ProgMovieAlignmentCorrelationGPU<T>::getTotalShift(
+		const std::tuple<size_t,size_t, size_t>& tile,
+		const std::vector<std::pair<T,T>>& globalShifts,
+		const Matrix1D<T>& shiftX, const Matrix1D<T>& shiftY,
+		int bestIref) {
+	size_t t = std::get<2>(tile);
+//	static_assert(t < globalShifts.size());
+	T x, y;
+	this->computeTotalShift(bestIref, t,
+			shiftX, shiftY, x, y);
+	return std::make_pair(globalShifts.at(t).first + x,
+			globalShifts.at(t).second + y);
+}
+
+template<typename T>
 void ProgMovieAlignmentCorrelationGPU<T>::computeLocalShifts(MetaData& movie,
-            Image<T>& dark, Image<T>& gain) {
+            Image<T>& dark, Image<T>& gain, int bestIref) {
 	std::vector<std::pair<T,T> >shifts;
+	std::vector<std::pair<T,T>>zeroShifts;
 	int n = -1;
 	bool cropInput = (this->yDRcorner != -1);
 	int noOfImgs = this->nlast - this->nfirst + 1;
@@ -187,9 +234,13 @@ void ProgMovieAlignmentCorrelationGPU<T>::computeLocalShifts(MetaData& movie,
 			std::pair<T,T> s;
 			movie.getValue(MDL_SHIFT_X, s.first, __iter.objId);
 			movie.getValue(MDL_SHIFT_Y, s.second, __iter.objId);
+			s.first = std::round(s.first);
+			s.second = std::round(s.second);
 			shifts.push_back(s);
+			zeroShifts.emplace_back(0,0);
 		}
 	}
+//	zeroShifts.resize(shifts.size());
 	T* data = loadToRAM(movie, noOfImgs, dark, gain, cropInput);
 	std::cout << "compute local shifts" << std::endl;
 //	for (const auto shift : shifts) {
@@ -202,6 +253,15 @@ void ProgMovieAlignmentCorrelationGPU<T>::computeLocalShifts(MetaData& movie,
 	            * std::max(patchSizeX, (((patchSizeX/2)+1)*2) * 2)]();
 	size_t noOfPatchesX = 10;
 	size_t noOfPatchesY = 10;
+	std::map<std::tuple<size_t,size_t, size_t>, std::pair<T,T>> tilesShifts;
+	auto k = std::make_tuple(77,88,99);
+	auto v = std::make_pair(11,22);
+	tilesShifts.emplace(k, v);
+	bool eq = tilesShifts.begin()->first == std::make_tuple(77,88,99);
+	std::cout << std::boolalpha << "udelej novy funguje:" << eq << std::endl;
+	std::cout << std::boolalpha << "find funguje:" << (tilesShifts.find(std::make_tuple(77,88,99)) == tilesShifts.begin()) << std::endl;
+	std::cout << std::boolalpha << "[] funguje:" << (tilesShifts[std::make_tuple(77,88,99)].first == 11) << std::endl;
+//	std::cout << tilesShifts.begin()->first
 //	Image<T> patch(patchSizeX, patchSizeY, 1, noOfImgs, data);
 	for (int y=0; y < noOfPatchesY;++y ) {
 		for (int x = 0; x < noOfPatchesX; ++x) {
@@ -214,25 +274,42 @@ void ProgMovieAlignmentCorrelationGPU<T>::computeLocalShifts(MetaData& movie,
 		    Matrix2D<T> A(N * (N - 1) / 2, N - 1);
 			Matrix1D<T> bX(N * (N - 1) / 2), bY(N * (N - 1) / 2);
 			printf("Patch %d\n",y*noOfPatchesX+x);
-			::computeShifts(device, this->maxShift / 2, noOfImgs, (std::complex<T>*)tmp,
+			::computeShifts(device, this->maxShift, noOfImgs, (std::complex<T>*)tmp,
 					patchSizeX/2+1, patchSizeX, patchSizeY,  60,  10,
 					bX, bY, A);
 			Matrix1D<T> shiftX, shiftY;
 			this->solveEquationSystem(bX, bY, A, shiftX, shiftY);
 			// Choose reference image as the minimax of shifts
-			int bestIref = this->findReferenceImage(N, shiftX, shiftY);
+//			int bestIref = this->findReferenceImage(N, shiftX, shiftY);
+			auto func = [&](int t) {
+				T lx, ly;
+				this->computeTotalShift(bestIref, t,
+						shiftX, shiftY, lx, ly);
+				T gx = shifts.at(t).first;
+				T gy = shifts.at(t).second;
+				T tx = gx - lx;
+				T ty = gy - ly;
+				printf("local shift: %f %f", lx, ly);
+				printf("\tglobal shift: %f %f", gx, gy);
+				printf("\ttotal shift: %f %f\n", tx, ty);
+//				printf("\treference: %d\n", bestIref);
+				return std::make_pair(tx,ty);
+			};
+			for (size_t t = 0; t < N; ++t) {
+				tilesShifts.emplace(std::make_tuple(x,y,t), func(t));
+			}
 
-
-			getPatches(x, y, data, localShiftBorder, shifts, tmp);
-			Image<T> zkouska(patchSizeX, patchSizeY,1, noOfImgs);
-			zkouska.data.data = tmp;
-			zkouska.write("zkouska" + std::to_string(y*N+x) + ".vol");
-			zkouska.data.data = NULL;
+			//// DEBUG
+			getPatches(x, y, data, localShiftBorder, zeroShifts, tmp);
+//			Image<T> zkouska(patchSizeX, patchSizeY,1, noOfImgs);
+//			zkouska.data.data = tmp;
+//			zkouska.write("zkouska" + std::to_string(y*N+x) + ".vol");
+//			zkouska.data.data = NULL;
 			applyLocalShiftsComputeAverage(
-			        tmp, patchSizeX, patchSizeY,
-			        shifts,
-			        shiftX, shiftY,
-			        noOfImgs, (y*noOfPatchesX+x), device, bestIref);
+			        tmp, x, y,patchSizeX, patchSizeY,
+			        tilesShifts,
+			        noOfImgs, (y*noOfPatchesX+x), device);
+
 //			break;
 
 			// Choose reference image as the minimax of shifts
@@ -241,7 +318,16 @@ void ProgMovieAlignmentCorrelationGPU<T>::computeLocalShifts(MetaData& movie,
 		}
 //		break;
 	}
+//	for (auto &r : tilesShifts) {
+//		std::cout << std::get<0>(r.first) << " "
+//				<< std::get<1>(r.first) << " "
+//				<< std::get<2>(r.first) << ": "
+//				<< std::get<0>(r.second) << " "
+//				<< std::get<1>(r.second) << std::endl;
+//	}
 }
+
+
 
 
 template<typename T>

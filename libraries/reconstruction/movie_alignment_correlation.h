@@ -86,7 +86,7 @@ private:
      * @param gain correction to be used
      */
     void computeLocalShifts(MetaData& movie,
-            Image<T>& dark, Image<T>& gain) {
+            Image<T>& dark, Image<T>& gain, int) {
     	REPORT_ERROR(ERR_NOT_IMPLEMENTED, "Not available");
     }
 

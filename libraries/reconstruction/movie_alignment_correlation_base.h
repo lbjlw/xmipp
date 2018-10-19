@@ -157,7 +157,7 @@ private:
      * @param gain correction to be used
      */
     virtual void computeLocalShifts(MetaData& movie,
-            Image<T>& dark, Image<T>& gain) = 0;
+            Image<T>& dark, Image<T>& gain, int refFrame) = 0;
 
     /**
      * This method applies shifts stored in the metadata and computes 'average'

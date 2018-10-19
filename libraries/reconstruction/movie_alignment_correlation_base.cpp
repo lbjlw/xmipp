@@ -510,7 +510,7 @@ void AProgMovieAlignmentCorrelation<T>::run() {
         releaseGlobalAlignResources();
     }
     if (processLocalShifts) {
-    	computeLocalShifts(movie, dark, gain);
+    	computeLocalShifts(movie, dark, gain, bestIref);
     }
 
     size_t N, Ninitial;
