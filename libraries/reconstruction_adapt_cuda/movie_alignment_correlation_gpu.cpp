@@ -289,9 +289,9 @@ void ProgMovieAlignmentCorrelationGPU<T>::computeLocalShifts(MetaData& movie,
 				T gy = shifts.at(t).second;
 				T tx = gx - lx;
 				T ty = gy - ly;
-				printf("local shift: %f %f", lx, ly);
-				printf("\tglobal shift: %f %f", gx, gy);
-				printf("\ttotal shift: %f %f\n", tx, ty);
+//				printf("local shift: %f %f", lx, ly);
+//				printf("\tglobal shift: %f %f", gx, gy);
+//				printf("\ttotal shift: %f %f\n", tx, ty);
 //				printf("\treference: %d\n", bestIref);
 				return std::make_pair(tx,ty);
 			};
@@ -300,15 +300,15 @@ void ProgMovieAlignmentCorrelationGPU<T>::computeLocalShifts(MetaData& movie,
 			}
 
 			//// DEBUG
-			getPatches(x, y, data, localShiftBorder, zeroShifts, tmp);
+//			getPatches(x, y, data, localShiftBorder, zeroShifts, tmp);
 //			Image<T> zkouska(patchSizeX, patchSizeY,1, noOfImgs);
 //			zkouska.data.data = tmp;
 //			zkouska.write("zkouska" + std::to_string(y*N+x) + ".vol");
 //			zkouska.data.data = NULL;
-			applyLocalShiftsComputeAverage(
-			        tmp, x, y,patchSizeX, patchSizeY,
-			        tilesShifts,
-			        noOfImgs, (y*noOfPatchesX+x), device);
+//			applyLocalShiftsComputeAverage(
+//			        tmp, x, y,patchSizeX, patchSizeY,
+//			        tilesShifts,
+//			        noOfImgs, (y*noOfPatchesX+x), device);
 
 //			break;
 
@@ -318,6 +318,54 @@ void ProgMovieAlignmentCorrelationGPU<T>::computeLocalShifts(MetaData& movie,
 		}
 //		break;
 	}
+	int L = 4;
+	int Lt = 3;
+	int noOfPatchesXY = noOfPatchesX*noOfPatchesY;
+	Matrix2D<T>A(noOfPatchesXY*noOfImgs, (L+2)*(L+2)*(Lt+2));
+	Matrix1D<T>bX(noOfPatchesXY*noOfImgs);
+	Matrix1D<T>bY(noOfPatchesXY*noOfImgs);
+	T hX = inputOptSizeX / (T)(L-1);
+	T hY = inputOptSizeY / (T)(L-1);
+	T hT = noOfImgs / (T)(Lt-1);
+//	printf("hX hY: %f %f %f\n", hX, hY, hT);
+	for (int t = 0 ; t < noOfImgs; ++t) {
+		int tileIdxT = t;
+		int tileCenterT = tileIdxT * 1 + 0 + 0;
+//		printf("%d\n", t);
+		for (int i = 0; i < noOfPatchesXY; ++i) {
+			int tileIdxX = i%noOfPatchesX;
+			int tileIdxY = i/noOfPatchesX;
+
+			int tileCenterX = tileIdxX * patchSizeX + patchSizeX/2 + localShiftBorder.first;
+			int tileCenterY = tileIdxY * patchSizeY + patchSizeY/2 +localShiftBorder.second;
+
+//			printf("\ttile %d %d %d (%d %d %d):\n", tileIdxX, tileIdxY, tileIdxT, tileCenterX, tileCenterY, tileCenterT);
+
+			for (int j = 0; j < (Lt+2)*(L+2)*(L+2); ++j) {
+				int controlIdxT = j/((L+2)*(L+2))-1;
+				int XY=j%((L+2)*(L+2));
+     			int controlIdxY = (XY/(L+2)) -1;
+				int controlIdxX = (XY%(L+2)) -1;
+				// note: if control point is not in the tile vicinity, val == 0 and can be skipped
+				T val = Bspline03((tileCenterX / (T)hX) - controlIdxX) *
+						Bspline03((tileCenterY / (T)hY) - controlIdxY) *
+						Bspline03((tileCenterT / (T)hT) - controlIdxT);
+				//A.mdata[(t*noOfPatchesXY*A.mdimy)+(i*noOfPatchesXY+j)] = val;
+				MAT_ELEM(A,t*noOfPatchesXY + i,j) = val;
+//				printf("\t\t i=%d,control point %d %d %d = %f\n", t*noOfPatchesXY + i, controlIdxX, controlIdxY, controlIdxT, val);
+
+			}
+			VEC_ELEM(bX,t*noOfPatchesXY + i) = tilesShifts[std::make_tuple(tileIdxX, tileIdxY, t)].first;
+			VEC_ELEM(bY,t*noOfPatchesXY + i) = tilesShifts[std::make_tuple(tileIdxX, tileIdxY, t)].second;
+//			printf("\tB = %f %f\n\n", tilesShifts[std::make_tuple(tileIdxX, tileIdxY, t)].first,
+//					tilesShifts[std::make_tuple(tileIdxX, tileIdxY, t)].second);
+		}
+	}
+
+	Matrix1D<T> coefsX, coefsY;
+	this->solveEquationSystem(bX, bY, A, coefsX, coefsY);
+	std::cout << coefsX << std::endl;
+	std::cout << coefsY << std::endl;
 //	for (auto &r : tilesShifts) {
 //		std::cout << std::get<0>(r.first) << " "
 //				<< std::get<1>(r.first) << " "
