@@ -257,10 +257,10 @@ void ProgMovieAlignmentCorrelationGPU<T>::computeLocalShifts(MetaData& movie,
 	auto k = std::make_tuple(77,88,99);
 	auto v = std::make_pair(11,22);
 	tilesShifts.emplace(k, v);
-	bool eq = tilesShifts.begin()->first == std::make_tuple(77,88,99);
-	std::cout << std::boolalpha << "udelej novy funguje:" << eq << std::endl;
-	std::cout << std::boolalpha << "find funguje:" << (tilesShifts.find(std::make_tuple(77,88,99)) == tilesShifts.begin()) << std::endl;
-	std::cout << std::boolalpha << "[] funguje:" << (tilesShifts[std::make_tuple(77,88,99)].first == 11) << std::endl;
+//	bool eq = tilesShifts.begin()->first == std::make_tuple(77,88,99);
+//	std::cout << std::boolalpha << "udelej novy funguje:" << eq << std::endl;
+//	std::cout << std::boolalpha << "find funguje:" << (tilesShifts.find(std::make_tuple(77,88,99)) == tilesShifts.begin()) << std::endl;
+//	std::cout << std::boolalpha << "[] funguje:" << (tilesShifts[std::make_tuple(77,88,99)].first == 11) << std::endl;
 //	std::cout << tilesShifts.begin()->first
 //	Image<T> patch(patchSizeX, patchSizeY, 1, noOfImgs, data);
 	for (int y=0; y < noOfPatchesY;++y ) {
@@ -366,6 +366,78 @@ void ProgMovieAlignmentCorrelationGPU<T>::computeLocalShifts(MetaData& movie,
 	this->solveEquationSystem(bX, bY, A, coefsX, coefsY);
 	std::cout << coefsX << std::endl;
 	std::cout << coefsY << std::endl;
+
+	T delta = 0.0001;
+	Image<T> final(inputOptSizeX, inputOptSizeY);
+	size_t counter = 0;
+	for(size_t frame = 0; frame < noOfImgs; ++frame) {
+		size_t frameOffset = frame * inputOptSizeY * inputOptSizeX;
+		for (size_t y = 0; y < 400; ++y) {
+			size_t lineOffset = y * inputOptSizeX;
+			for (size_t x = 0; x < 400; ++x) {
+				size_t srcOffset = frameOffset + lineOffset + x;
+				T shiftX = 0;
+				T shiftY = 0;
+				for (int j = 0; j < (Lt+2)*(L+2)*(L+2); ++j) {
+					int controlIdxT = j/((L+2)*(L+2))-1;
+					int XY=j%((L+2)*(L+2));
+					int controlIdxY = (XY/(L+2)) -1;
+					int controlIdxX = (XY%(L+2)) -1;
+					// note: if control point is not in the tile vicinity, val == 0 and can be skipped
+					T tmp = Bspline03((x / (T)hX) - controlIdxX) *
+							Bspline03((y / (T)hY) - controlIdxY) *
+							Bspline03((frame / (T)hT) - controlIdxT);
+					if (std::abs(tmp) > delta) {
+						int tileIdxX = x / patchSizeX;
+						int tileIdxY = y / patchSizeY;
+						size_t coeffOffset = (controlIdxT+1) * (L+2)*(L+2) + (controlIdxY+1) * (L+2) + (controlIdxX+1);//frame*noOfPatchesXY + (tileIdxY*noOfPatchesX + tileIdxX);//
+						shiftX += VEC_ELEM(coefsX, coeffOffset) * tmp;// this is just a test, we need the fractional shift!
+						shiftY += VEC_ELEM(coefsY, coeffOffset) * tmp;
+//						printf("%lu %lu %lu -> %f (%lu) from pixels %f %f\n",
+//								x, y, frame, tmp, coeffOffset, shiftX, shiftY);
+					}
+				}
+				int newX = (T)x + std::round(shiftX);
+				int newY = (T)y + std::round(shiftY);
+//				counter++;
+				if (newX >= 0 && newX < inputOptSizeX
+						&& newY >= 0 && newY < inputOptSizeY) {
+//					if ()
+//					printf("%lu %lu %lu -> pixels %d %d\n",
+//							x, y, frame, newX, newY);
+					//final.data.data[newY * inputOptSizeX + newX] += data[srcOffset];
+					final.data.data[y * inputOptSizeX + x] += data[srcOffset + (newY * inputOptSizeX) + newX];
+				}
+
+
+
+//				for (int t = -1; t < (Lt+1); ++t) {
+//					size_t tOffset = (t+1) * (L+2) * (L+2);
+//					for (int i = -1; i < (L+1); ++i) {
+//						size_t iOffset = (i+1) * (L+2);
+//						for (int j = -1; j < (L+1); ++j) {
+//							size_t coeffOffset = tOffset + iOffset + (j+1);
+//							T tmp = Bspline03((x / (T)hX) - i) *
+//									Bspline03((y / (T)hY) - j) *
+//									Bspline03((frame / (T)hT) - t);
+//							if (std::abs(tmp) > delta) {
+//								int newX = std::round(VEC_ELEM(coefsX, coeffOffset) * tmp);
+//								int newY = std::round(VEC_ELEM(coefsY, coeffOffset) * tmp);
+//								printf("%lu %lu %lu -> %f (%lu %lu %lu) from pixels %d %d\n",
+//										x, y, frame, tmp, i, j, t, newX, newY);
+//								if (newX >= 0 && newX < inputOptSizeX
+//										&& newY >= 0 && newY < inputOptSizeY) {
+//									final.data.data[newY * inputOptSizeX + newX] += data[srcOffset];
+//								}
+//							}
+//						}
+//					}
+//				}
+			}
+		}
+	}
+	final.write("result.vol");
+
 //	for (auto &r : tilesShifts) {
 //		std::cout << std::get<0>(r.first) << " "
 //				<< std::get<1>(r.first) << " "
