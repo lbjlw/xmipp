@@ -31,6 +31,7 @@
 #include "reconstruction_cuda/cuda_gpu_geo_shift_transformer.h"
 #include "data/filters.h"
 #include "core/userSettings.h"
+#include <chrono>
 
 template<typename T>
 class ProgMovieAlignmentCorrelationGPU: public AProgMovieAlignmentCorrelation<T> {
@@ -210,6 +211,9 @@ private:
     }
 
     void getPatches(size_t x, size_t y,
+    		T* data, std::pair<T,T>& border, std::vector<std::pair<T,T> >& shifts, T* result);
+
+    void getPatchesJoined(size_t idx, size_t idy,
     		T* data, std::pair<T,T>& border, std::vector<std::pair<T,T> >& shifts, T* result);
 
     void applyLocalShiftsComputeAverage(

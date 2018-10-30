@@ -91,6 +91,38 @@ void ProgMovieAlignmentCorrelationGPU<T>::getPatches(size_t idx, size_t idy,
 }
 
 template<typename T>
+void ProgMovieAlignmentCorrelationGPU<T>::getPatchesJoined(size_t idx, size_t idy,
+		T* data, std::pair<T,T>& border, std::vector<std::pair<T,T> >& shifts, T* result) {
+	size_t n = shifts.size();
+	size_t xFirst = border.first + (idx * patchSizeX);
+	size_t yFirst = border.second + (idy * patchSizeY);
+	auto loop = [&](size_t i) {
+		size_t frameOffset = i * inputOptSizeX * inputOptSizeY;
+		size_t patchOffset = i * patchSizeX * patchSizeY;
+		int xShift = shifts.at(i).first;
+		int yShift = shifts.at(i).second;
+//		printf("%d %d \n", xShift, yShift);
+		for (size_t y = 0; y < patchSizeY; ++y) {
+			size_t srcY = (yFirst + y) - yShift; // assuming shift is smaller than offset
+			if ((srcY >=0) && (srcY < inputOptSizeY)) {
+				size_t srcIndex = (frameOffset + (srcY * inputOptSizeX) + xFirst) - xShift;
+				size_t destIndex = patchOffset + y * patchSizeX;
+				for (size_t x = 0; x < patchSizeX; ++x) {
+					result[destIndex + x] += data[srcIndex + x]/3.;
+				}
+			} else {
+				printf("ERROR!!!!!!!!!!!\n");
+			}
+		}
+	};
+	for (size_t i = 0; i < n; ++i) {
+		loop(i);
+		if ((i+1) < n) loop(i+1); else printf("skipping %d %d\n", i, i+1);
+		if ((i+2) < n) loop(i+2); else printf("skipping %d %d\n", i, i+2);
+	}
+}
+
+template<typename T>
 void computeShifts(int device, size_t scaledMaxShift, size_t N, std::complex<T>* data,
 		size_t fftX, size_t x, size_t y, size_t bufferImgs, size_t batch,
 		const Matrix1D<T>& bX, const Matrix1D<T>& bY, const Matrix2D<T>& A) {
@@ -103,11 +135,19 @@ void computeShifts(int device, size_t scaledMaxShift, size_t N, std::complex<T>*
 //			/ (croppedOptSizeY / (T) inputOptSizeY);
 //	size_t scaledMaxShift = std::floor((this->maxShift * this->sizeFactor) / localSizeFactorX);
 
+
+
 	T* correlations;
 	size_t centerSize = std::ceil(scaledMaxShift * 2 + 1);
 	computeCorrelations(centerSize, N, data, fftX,
 			x, y, bufferImgs,
 			batch, correlations);
+
+	Image<T>tmp(fftX, y, 1, N);
+	for (size_t i = 0; i < (N * fftX * y); ++i) {
+		tmp.data.data[i] = data[i].real();
+	}
+	tmp.write("data.vol");
 
 	Image<T> corrs(centerSize, centerSize, 1, (N*(N-1))/2);
 	corrs.data.data = correlations;
@@ -220,6 +260,42 @@ auto ProgMovieAlignmentCorrelationGPU<T>::getTotalShift(
 }
 
 template<typename T>
+bool inRangeX(T x) { return (x >= 0) && (x < 4096); };
+template<typename T>
+bool inRangeY(T y) { return (y >= 0) && (y < 4096); };
+template<typename T>
+bool inRange(T x, T y) { return inRangeX(x) && inRangeY(y); };
+
+template<typename T>
+T getValue(T *src, T x, T y)
+{
+	if (inRange(x, y)) {
+		size_t index = (size_t)y * 4096 + (size_t)x;
+		return src[index];
+	}
+	return (T)0;
+}
+
+template<typename T>
+T bilinearInterpolation(T *src, T x, T y)
+{
+	T xf = std::floor(x);
+	T xc = std::ceil(x);
+	T yf = std::floor(y);
+	T yc = std::ceil(y);
+	T xw = x - xf;
+	T yw = y - yf;
+	T vff = getValue(src, xf, yf);
+	T vfc = getValue(src, xf, yc);
+	T vcf = getValue(src, xc, yf);
+	T vcc = getValue(src, xc, yc);
+	return vff * ((T)1 - xw) * ((T)1 - yw)
+			+ vcf * xw * ((T)1 - yw)
+			+ vfc * ((T)1 - xw) * yw
+			+ vcc * xw * yw;
+}
+
+template<typename T>
 void ProgMovieAlignmentCorrelationGPU<T>::computeLocalShifts(MetaData& movie,
             Image<T>& dark, Image<T>& gain, int bestIref) {
 	std::vector<std::pair<T,T> >shifts;
@@ -249,8 +325,9 @@ void ProgMovieAlignmentCorrelationGPU<T>::computeLocalShifts(MetaData& movie,
 	localShiftBorder = getMaxBoundary(shifts);
 	patchSizeX = patchSizeY = 400;
 
-	T* tmp = new T[noOfImgs * patchSizeX
-	            * std::max(patchSizeX, (((patchSizeX/2)+1)*2) * 2)]();
+	size_t tmpElements = noOfImgs * patchSizeX
+            * std::max(patchSizeX, (((patchSizeX/2)+1)*2) * 2);
+	T* tmp = new T[tmpElements]();
 	size_t noOfPatchesX = 10;
 	size_t noOfPatchesY = 10;
 	std::map<std::tuple<size_t,size_t, size_t>, std::pair<T,T>> tilesShifts;
@@ -263,13 +340,35 @@ void ProgMovieAlignmentCorrelationGPU<T>::computeLocalShifts(MetaData& movie,
 //	std::cout << std::boolalpha << "[] funguje:" << (tilesShifts[std::make_tuple(77,88,99)].first == 11) << std::endl;
 //	std::cout << tilesShifts.begin()->first
 //	Image<T> patch(patchSizeX, patchSizeY, 1, noOfImgs, data);
+
+	// Construct 1D profile of the lowpass filter
+	T targetOccupancy = 1.0; // Set to 1 if you want fmax maps onto 1/(2*newTs)
+	this->computeSizeFactor(targetOccupancy);
+	MultidimArray<T> lpf(patchSizeX / 2);
+	std::cout << "target occupancy " << targetOccupancy << std::endl;
+
+	/////////////////
+	targetOccupancy = 0.25; // FIXME
+	//////////////////
+
+	this->constructLPF(targetOccupancy, lpf);
+	lpf.data[0] = lpf.data[1] = 0;
+	// prepare filter
+	MultidimArray<T> filter;
+	filter.initZeros(patchSizeY, patchSizeX/2 + 1);
+	this->scaleLPF(lpf, patchSizeX, patchSizeY, targetOccupancy,
+			filter);
+
+
+	// for each patch position, get all patches and try to estimate their alignment
 	for (int y=0; y < noOfPatchesY;++y ) {
 		for (int x = 0; x < noOfPatchesX; ++x) {
-			getPatches(x, y, data, localShiftBorder, shifts, tmp);
+			memset(tmp, 0, tmpElements * sizeof(T));
+			getPatchesJoined(x, y, data, localShiftBorder, shifts, tmp);
 		    // scale and transform to FFT on GPU
 		    performFFTAndScale<T>(tmp, noOfImgs, patchSizeX,
 		            patchSizeY, 50, patchSizeX/2+1,
-		            patchSizeY, nullptr);
+		            patchSizeY, &filter);
 		    size_t N = noOfImgs;
 		    Matrix2D<T> A(N * (N - 1) / 2, N - 1);
 			Matrix1D<T> bX(N * (N - 1) / 2), bY(N * (N - 1) / 2);
@@ -318,6 +417,19 @@ void ProgMovieAlignmentCorrelationGPU<T>::computeLocalShifts(MetaData& movie,
 		}
 //		break;
 	}
+
+	// here we have estimated shifts of all patches at all times
+	for (auto &r : tilesShifts) {
+		std::cout << std::get<0>(r.first) << " "
+				<< std::get<1>(r.first) << " "
+				<< std::get<2>(r.first) << ": "
+				<< std::get<0>(r.second) << " "
+				<< std::get<1>(r.second) << std::endl;
+	}
+
+	return;
+
+	// get coefficients fo the BSpline that can represent the shifts (formula  from the paper)
 	int L = 4;
 	int Lt = 3;
 	int noOfPatchesXY = noOfPatchesX*noOfPatchesY;
@@ -362,19 +474,23 @@ void ProgMovieAlignmentCorrelationGPU<T>::computeLocalShifts(MetaData& movie,
 		}
 	}
 
+	// solve the equation system for the spline coefficients
 	Matrix1D<T> coefsX, coefsY;
 	this->solveEquationSystem(bX, bY, A, coefsX, coefsY);
 	std::cout << coefsX << std::endl;
 	std::cout << coefsY << std::endl;
 
+	auto t1 = std::chrono::high_resolution_clock::now();
+
+	// try to interpolate input data using the BSPline
 	T delta = 0.0001;
 	Image<T> final(inputOptSizeX, inputOptSizeY);
 	size_t counter = 0;
 	for(size_t frame = 0; frame < noOfImgs; ++frame) {
 		size_t frameOffset = frame * inputOptSizeY * inputOptSizeX;
-		for (size_t y = 0; y < 400; ++y) {
+		for (size_t y = 0; y < inputOptSizeY; ++y) {
 			size_t lineOffset = y * inputOptSizeX;
-			for (size_t x = 0; x < 400; ++x) {
+			for (size_t x = 0; x < inputOptSizeX; ++x) {
 				size_t srcOffset = frameOffset + lineOffset + x;
 				T shiftX = 0;
 				T shiftY = 0;
@@ -397,17 +513,17 @@ void ProgMovieAlignmentCorrelationGPU<T>::computeLocalShifts(MetaData& movie,
 //								x, y, frame, tmp, coeffOffset, shiftX, shiftY);
 					}
 				}
-				int newX = (T)x + std::round(shiftX);
-				int newY = (T)y + std::round(shiftY);
+//				int newX = (T)x + std::round(shiftX);
+//				int newY = (T)y + std::round(shiftY);
 //				counter++;
-				if (newX >= 0 && newX < inputOptSizeX
-						&& newY >= 0 && newY < inputOptSizeY) {
+//				if (newX >= 0 && newX < inputOptSizeX
+//						&& newY >= 0 && newY < inputOptSizeY) {
 //					if ()
 //					printf("%lu %lu %lu -> pixels %d %d\n",
 //							x, y, frame, newX, newY);
 					//final.data.data[newY * inputOptSizeX + newX] += data[srcOffset];
-					final.data.data[y * inputOptSizeX + x] += data[srcOffset + (newY * inputOptSizeX) + newX];
-				}
+					final.data.data[y * inputOptSizeX + x] += bilinearInterpolation(data + frameOffset, x - shiftX, y - shiftY);
+//				}
 
 
 
@@ -438,13 +554,12 @@ void ProgMovieAlignmentCorrelationGPU<T>::computeLocalShifts(MetaData& movie,
 	}
 	final.write("result.vol");
 
-//	for (auto &r : tilesShifts) {
-//		std::cout << std::get<0>(r.first) << " "
-//				<< std::get<1>(r.first) << " "
-//				<< std::get<2>(r.first) << ": "
-//				<< std::get<0>(r.second) << " "
-//				<< std::get<1>(r.second) << std::endl;
-//	}
+    auto t2 = std::chrono::high_resolution_clock::now();
+
+    auto duration = std::chrono::duration_cast<std::chrono::seconds>( t2 - t1 ).count();
+    std::cout << "interpolation: " << duration << std::endl;
+
+
 }
 
 
@@ -1563,6 +1678,11 @@ void ProgMovieAlignmentCorrelationGPU<T>::computeShifts(size_t N,
     computeCorrelations(centerSize, N, frameFourier, croppedOptSizeFFTX,
             croppedOptSizeX, croppedOptSizeY, correlationBufferImgs,
             croppedOptBatchSize, correlations);
+
+	Image<T> corrs(centerSize, centerSize, 1, (N*(N-1))/2);
+	corrs.data.data = correlations;
+	corrs.write("correlationsGlobal.vol");
+	corrs.data.data = NULL;
 
 
     int idx = 0;

@@ -123,6 +123,19 @@ protected:
         void computeTotalShift(int iref, int j, const Matrix1D<T> &shiftX,
                 const Matrix1D<T> &shiftY, T &totalShiftX, T &totalShiftY);
 
+
+        /**
+             * Method to construct 1D low-pass filter profile
+             * @param targetOccupancy max frequency to preserve
+             * @param lpf filter will be stored here
+             */
+            void constructLPF(T targetOccupancy, const MultidimArray<T>& lpf);
+            /**
+             * Method computes an internal (down)scale factor of the micrographs
+             * @param targetOccupancy max frequency (in Fourier domain) to preserve
+             */
+            void computeSizeFactor(T& targetOccupancy);
+
 private:
     /**
      * After running this method, all relevant images from the movie should
@@ -180,11 +193,7 @@ private:
 	virtual void releaseGlobalAlignResources() = 0;
 
 private:
-    /**
-     * Method computes an internal (down)scale factor of the micrographs
-     * @param targetOccupancy max frequency (in Fourier domain) to preserve
-     */
-    void computeSizeFactor(T& targetOccupancy);
+
 
 
     /**
@@ -199,12 +208,6 @@ private:
      */
     void loadGainCorrection(Image<T>& gain);
 
-    /**
-     * Method to construct 1D low-pass filter profile
-     * @param targetOccupancy max frequency to preserve
-     * @param lpf filter will be stored here
-     */
-    void constructLPF(T targetOccupancy, const MultidimArray<T>& lpf);
 
     /**
      * Internally, images are processed in smaller resolution. This function
