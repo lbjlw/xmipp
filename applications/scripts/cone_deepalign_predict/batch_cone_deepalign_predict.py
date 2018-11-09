@@ -62,40 +62,52 @@ if __name__=="__main__":
     #AJ no quiero cargar todas las imagenes en memoria
     #si puedo cargar todas las projs e iterar por las exp
 
-    numBatch=1
+    sizeBatch=1000
     Nexp = mdExp.size()
-    if Nexp<numBatch:
-        oneXExp = np.zeros((Nexp,Xdim,Xdim,1),dtype=np.float64)
-        YpredAux = np.zeros((Nexp,numClassif),dtype=np.float64) 
-    if Nexp>numBatch:
-        oneXExp = np.zeros((1,Xdim,Xdim,1),dtype=np.float64)
-        YpredAux = np.zeros((numClassif),dtype=np.float64) 
-    Ypred = np.zeros((Nexp),dtype=np.float64)    
-    refPred = np.zeros((Nexp,3),dtype=np.int64)    
+    maxBatchs=np.ceil(float(Nexp)/float(sizeBatch))
+    Ypred = np.zeros((Nexp),dtype=np.float64)   
+    refPred = np.zeros((Nexp,3),dtype=np.float64)    
     models=[]
-
     for i in range(numClassif):
 	if os.path.exists(os.path.join(fnODir,'modelCone%d.h5'%(i+1))):
 	    models.append(load_model(os.path.join(fnODir,'modelCone%d.h5'%(i+1))))
+    if Nexp>sizeBatch:
+        oneXExp = np.zeros((sizeBatch,Xdim,Xdim,1),dtype=np.float64)
+        YpredAux = np.zeros((sizeBatch,numClassif),dtype=np.float64)
 
     idxExp = 0
+    countBatch=0
+    numBatch = 0
+    done = 0
     for objIdExp in mdExp:
+	if numBatch==(maxBatchs-1) and done==0:
+	    oneXExp = np.zeros((Nexp-idxExp,Xdim,Xdim,1),dtype=np.float64)
+            YpredAux = np.zeros((Nexp-idxExp,numClassif),dtype=np.float64)
+	    done=1
 	fnExp = mdExp.getValue(xmippLib.MDL_IMAGE,objIdExp)
 	Iexp = xmippLib.Image(fnExp)
-        oneXExp[0,:,:,0] = Iexp.getData()
-	oneXExp[0,:,:,0] = (oneXExp[0,:,:,0]-np.mean(oneXExp[0,:,:,0]))/np.std(oneXExp[0,:,:,0])
-	#if (idxExp%numBatch)==0 or idxExp==(Nexp-1):
-        for i in range(numClassif):
-	    model = models[i]
-            YpredAux[i] = model.predict([oneXExp])
-	#print(objIdExp, YpredAux)
-        Ypred[idxExp] = np.max(YpredAux)
-	refPred[idxExp, :] = [objIdExp, np.argmax(YpredAux)+1, Ypred[idxExp]]
-	#print(idxExp, Ypred[idxExp], refPred[idxExp])
-        #mdExp.setValue(xmippLib.MDL_MAXCC, float(maxYpred), objIdExp)
-        #mdExp.setValue(xmippLib.MDL_REF, int(maxPos)+1, objIdExp) #+1 si o no
+        oneXExp[countBatch,:,:,0] = Iexp.getData()
+	oneXExp[countBatch,:,:,0] = (oneXExp[countBatch,:,:,0]-np.mean(oneXExp[countBatch,:,:,0]))/np.std(oneXExp[countBatch,:,:,0])
+	countBatch+=1
 	idxExp+=1
-    #mdExp.write(fnOName)
+	refPred[idxExp-1,0] = objIdExp
+	if ((idxExp%sizeBatch)==0 or idxExp==Nexp):
+	    countBatch = 0
+            for i in range(numClassif):
+	        model = models[i]
+                out = model.predict([oneXExp])
+		YpredAux[:,i] = out[:,0]
+	    #print("AQUIIII ",idxExp-sizeBatch, idxExp, YpredAux[:,i].shape, out[:,0].shape, Nexp-idxExp+1, numBatch*sizeBatch, Nexp-1)
+	    if numBatch==(maxBatchs-1):
+                Ypred[numBatch*sizeBatch:Nexp] = np.max(YpredAux, axis=1)
+	        refPred[numBatch*sizeBatch:Nexp, 1] = np.argmax(YpredAux, axis=1)+1
+	        refPred[numBatch*sizeBatch:Nexp, 2] = Ypred[numBatch*sizeBatch:Nexp]
+	    else:
+                Ypred[idxExp-sizeBatch:idxExp] = np.max(YpredAux, axis=1)
+	        refPred[idxExp-sizeBatch:idxExp, 1] = np.argmax(YpredAux, axis=1)+1
+	        refPred[idxExp-sizeBatch:idxExp, 2] = Ypred[idxExp-sizeBatch:idxExp]
+	    numBatch+=1
+
     np.savetxt(os.path.join(fnODir,'conePrediction.txt'), refPred)
 
 
