@@ -297,41 +297,9 @@ auto ProgMovieAlignmentCorrelationGPU<T>::getTotalShift(
 			globalShifts.at(t).second + y);
 }
 
-template<typename T>
-bool inRangeX(T x) { return (x >= 0) && (x < 4096); };
-template<typename T>
-bool inRangeY(T y) { return (y >= 0) && (y < 4096); };
-template<typename T>
-bool inRange(T x, T y) { return inRangeX(x) && inRangeY(y); };
 
-template<typename T>
-T getValue(T *src, T x, T y)
-{
-	if (inRange(x, y)) {
-		size_t index = (size_t)y * 4096 + (size_t)x;
-		return src[index];
-	}
-	return (T)0;
-}
 
-template<typename T>
-T bilinearInterpolation(T *src, T x, T y)
-{
-	T xf = std::floor(x);
-	T xc = std::ceil(x);
-	T yf = std::floor(y);
-	T yc = std::ceil(y);
-	T xw = x - xf;
-	T yw = y - yf;
-	T vff = getValue(src, xf, yf);
-	T vfc = getValue(src, xf, yc);
-	T vcf = getValue(src, xc, yf);
-	T vcc = getValue(src, xc, yc);
-	return vff * ((T)1 - xw) * ((T)1 - yw)
-			+ vcf * xw * ((T)1 - yw)
-			+ vfc * ((T)1 - xw) * yw
-			+ vcc * xw * yw;
-}
+
 
 template<typename T>
 void ProgMovieAlignmentCorrelationGPU<T>::computeLocalShifts(MetaData& movie,
@@ -590,9 +558,9 @@ void ProgMovieAlignmentCorrelationGPU<T>::computeLocalShifts(MetaData& movie,
 	size_t counter = 0;
 	for(size_t frame = 0; frame < noOfImgs; ++frame) {
 		size_t frameOffset = frame * inputOptSizeY * inputOptSizeX;
-		for (size_t y = 400; y < 700; ++y) {
+		for (size_t y = 0; y < 700; ++y) {
 			size_t lineOffset = y * inputOptSizeX;
-			for (size_t x = 2000; x < 2800; ++x) {
+			for (size_t x = 0; x < 2800; ++x) {
 				size_t srcOffset = frameOffset + lineOffset + x;
 				T shiftX = 0;
 				T shiftY = 0;

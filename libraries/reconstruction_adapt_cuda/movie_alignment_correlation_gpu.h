@@ -237,6 +237,38 @@ private:
             std::map<std::tuple<size_t,size_t, size_t>, std::pair<T,T>> shifts,
             int N, size_t counter, int device);
 
+
+    bool inRangeX(T x) { return (x >= 0) && (x < inputOptSizeX); };
+    bool inRangeY(T y) { return (y >= 0) && (y < inputOptSizeY); };
+    bool inRange(T x, T y) { return inRangeX(x) && inRangeY(y); };
+
+    T getValue(T *src, T x, T y)
+    {
+    	if (inRange(x, y)) {
+    		size_t index = (size_t)y * inputOptSizeX + (size_t)x;
+    		return src[index];
+    	}
+    	return (T)0;
+    }
+
+    T bilinearInterpolation(T *src, T x, T y)
+    {
+    	T xf = std::floor(x);
+    	T xc = std::ceil(x);
+    	T yf = std::floor(y);
+    	T yc = std::ceil(y);
+    	T xw = x - xf;
+    	T yw = y - yf;
+    	T vff = getValue(src, xf, yf);
+    	T vfc = getValue(src, xf, yc);
+    	T vcf = getValue(src, xc, yf);
+    	T vcc = getValue(src, xc, yc);
+    	return vff * ((T)1 - xw) * ((T)1 - yw)
+    			+ vcf * xw * ((T)1 - yw)
+    			+ vfc * ((T)1 - xw) * yw
+    			+ vcc * xw * yw;
+    }
+
 private:
     // downscaled Fourier transforms of the input images
     std::complex<T>* frameFourier;
