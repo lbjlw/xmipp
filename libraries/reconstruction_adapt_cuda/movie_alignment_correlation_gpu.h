@@ -213,6 +213,10 @@ private:
     void getPatches(size_t x, size_t y,
     		T* data, std::pair<T,T>& border, std::vector<std::pair<T,T> >& shifts, T* result);
 
+    void getPatches(size_t idx, size_t idy,
+    		T* data, std::pair<T,T>& border, std::map<std::tuple<size_t,size_t, size_t>, std::pair<T,T>>& shifts, T* result);
+
+
     void getPatchesJoined(size_t idx, size_t idy,
     		T* data, std::pair<T,T>& border, std::vector<std::pair<T,T> >& shifts, T* result);
 

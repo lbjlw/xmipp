@@ -136,6 +136,11 @@ protected:
              */
             void computeSizeFactor(T& targetOccupancy);
 
+            /** Sampling rate */
+            T Ts;
+            /** Max freq. */
+            T maxFreq;
+
 private:
     /**
      * After running this method, all relevant images from the movie should
@@ -302,10 +307,6 @@ private:
     FileName fnMovie;
     /** Correction images */
     FileName fnDark, fnGain;
-    /** Sampling rate */
-    T Ts;
-    /** Max freq. */
-    T maxFreq;
     /** Solver iterations */
     int solverIterations;
     /** Metadata with shifts */

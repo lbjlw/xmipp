@@ -217,7 +217,7 @@ template<typename T>
 void AProgMovieAlignmentCorrelation<T>::solveEquationSystem(Matrix1D<T>& bXt,
         Matrix1D<T>& bYt, Matrix2D<T>& At, Matrix1D<T>& shiftXt,
         Matrix1D<T>& shiftYt) {
-    Matrix1D<double> ex, ey;
+    Matrix1D<double> ex, ey, emedx, emedy;
     WeightedLeastSquaresHelper helper;
     Matrix2D<double> A;
     Matrix1D<double> bX, bY, shiftX, shiftY;
@@ -265,6 +265,17 @@ void AProgMovieAlignmentCorrelation<T>::solveEquationSystem(Matrix1D<T>& bXt,
         bY.computeMeanAndStddev(mean, varbY);
         varbY *= varbY;
 
+        double medx=ex.computeMedian();
+        emedx.resizeNoCopy(ex);
+        FOR_ALL_ELEMENTS_IN_MATRIX1D(ex)
+        	VEC_ELEM(emedx,i)=std::abs(VEC_ELEM(ex,i)-medx);
+        double madx=emedx.computeMedian();
+        double medy=ey.computeMedian();
+        emedy.resizeNoCopy(ey);
+        FOR_ALL_ELEMENTS_IN_MATRIX1D(ey)
+        	VEC_ELEM(emedy,i)=std::abs(VEC_ELEM(ey,i)-medy);
+        double mady=emedy.computeMedian();
+
         double R2x = 1 - vareX / varbX;
         double R2y = 1 - vareY / varbY;
         if (verbose)
@@ -277,8 +288,8 @@ void AProgMovieAlignmentCorrelation<T>::solveEquationSystem(Matrix1D<T>& bXt,
         size_t counter = 0;
         FOR_ALL_ELEMENTS_IN_MATRIX1D (ex) {
         	// remove outliers
-            if (fabs(VEC_ELEM(ex, i)) > 3 * stddeveX
-                    || fabs(VEC_ELEM(ey, i)) > 3 * stddeveY) {
+            if (fabs(VEC_ELEM(ex, i)) > (3 * stddeveX) //stddeveX
+                    || fabs(VEC_ELEM(ey, i)) > (3 * stddeveY)){ //stddeveY) {
                 VEC_ELEM(helper.w, i) = 0.0;
                 counter++;
             }
