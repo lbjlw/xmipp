@@ -19,7 +19,7 @@ from time import time
 import keras
 from keras import callbacks
 
-batch_size = 1024 # Number of boxes per batch
+#batch_size = 516 # Number of boxes per batch
 
 
 class DataGenerator(keras.utils.Sequence):
@@ -113,7 +113,6 @@ def createValidationData(pathsExp, labels_vector, numOut, percent=0.1):
 	    numberZeros= numberOnes
 	elif numberOnes>numberZeros:
 	    numberOnes=numberZeros
-	print("AQUIIIIIIIIIIIIIII",numberOnes, numberZeros)
         for i in range(numberOnes):
             labels = np.array(labels_vector)
 	    vectorOnes = np.where(labels==1)
@@ -170,6 +169,7 @@ if __name__=="__main__":
     numEpochs = int(sys.argv[5])
     Xdim = int(sys.argv[6])
     numOut = int(sys.argv[7])
+    batch_size = int(sys.argv[8])
 
     mdExp = xmippLib.MetaData(fnXmdExp)
     Nexp = mdExp.size()
