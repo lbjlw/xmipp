@@ -119,6 +119,29 @@ void ProgAngularAssignmentMag::run()
     MultidimArray<double>                   MDaRefFMs_polarPart(n_bands, n_ang);
     MultidimArray< std::complex<double> >   MDaRefFMs_polarF(n_bands, n_ang);
 
+    std::clock_t inicio, fin;
+    inicio = std::clock();
+
+    // try to storage all data related to reference images in memory
+    for (int k = 0; k < sizeMdRef; k++){
+        // reading image
+        mdRef.getRow(rowRef, size_t(k+1) );
+        rowRef.getValue(MDL_IMAGE, fnImgRef);
+
+        // processing reference image
+        ImgRef.read(fnImgRef);
+        MDaRef = ImgRef();
+        vecMDaRef.push_back(MDaRef); // push to vector of reference images
+        _applyFourierImage(MDaRef, MDaRefF);// fourier experimental image (genera copia?)
+        vecMDaRefF.push_back(MDaRefF); // push to vector of Fourier of reference image
+        _getComplexMagnitude(MDaRefF, MDaRefFM);// magnitude espectra experimental image
+        completeFourierShift(MDaRefFM, MDaRefFMs);// shift spectrum
+        MDaRefFMs_polar = imToPolar(MDaRefFMs, n_rad, n_ang);// polar representation of magnitude
+        selectBands(MDaRefFMs_polar, MDaRefFMs_polarPart, n_bands, startBand, n_ang); // select bands
+        _applyFourierImage(MDaRefFMs_polarPart, MDaRefFMs_polarF, n_ang); // apply fourier
+        vecMDaRefFMs_polarF.push_back(MDaRefFMs_polarF); // push to vector of Fourier polar representation of magnitude spectrum of reference images
+    }
+
     // CCV result matrix
     MultidimArray<double>                   ccMatrixRot(n_bands, n_ang);
     MultidimArray<double>                   ccVectorRot( (const size_t) 1, n_ang);
@@ -134,12 +157,10 @@ void ProgAngularAssignmentMag::run()
     std::vector<double>                     bestTy(sizeMdRef,0);
     std::vector<double>                     bestRot(sizeMdRef,0);
 
-    std::clock_t inicio, fin;
-    inicio = std::clock();
     std::ofstream outfile("/home/jeison/Escritorio/outfile.txt");
     // main loop, input stack
     double psiVal, realTx, realTy;
-    for (countInImg = 24500; countInImg < 24501/*sizeMdIn*/; countInImg += 30  /*countInImg++*/){
+    for (countInImg = 0; countInImg < 600 /*sizeMdIn*/; countInImg += 30  /*countInImg++*/){
         // read experimental image
         mdIn.getRow(rowExp, size_t(countInImg+1) /*iterExp->objId*/);
         rowExp.getValue(MDL_IMAGE, fnImgExp);
@@ -153,12 +174,12 @@ void ProgAngularAssignmentMag::run()
         // processing input image
         ImgIn.read(fnImgExp);
         MDaIn = ImgIn(); // getting image
-        _applyFourier(MDaIn, MDaInF); // fourier experimental image (genera copia?)
+        _applyFourierImage(MDaIn, MDaInF); // fourier experimental image (genera copia?)
         _getComplexMagnitude(MDaInF, MDaInFM); // magnitude espectra experimental image
         completeFourierShift(MDaInFM, MDaInFMs); // shift spectrum
         MDaInFMs_polar = imToPolar(MDaInFMs, n_rad, n_ang); // polar representation of magnitude
         selectBands(MDaInFMs_polar, MDaInFMs_polarPart, n_bands, startBand, n_ang); // select bands
-        _applyFourier(MDaInFMs_polarPart, MDaInFMs_polarF); // apply fourier
+        _applyFourierImage(MDaInFMs_polarPart, MDaInFMs_polarF, n_ang); // apply fourier
 
         // "restart" iterator for reference image
         iterRef->init(mdRef);
@@ -168,31 +189,18 @@ void ProgAngularAssignmentMag::run()
 
         // loop over reference stack
         for(countRefImg = 0; countRefImg < sizeMdRef; countRefImg++){
-            mdRef.getRow(rowRef, size_t(countRefImg+1) /*iterRef->objId*/);
-            rowRef.getValue(MDL_IMAGE, fnImgRef);
-
-            // processing reference image
-            ImgRef.read(fnImgRef);
-            MDaRef = ImgRef();
-            _applyFourier(MDaRef, MDaRefF);// fourier experimental image (genera copia?)
-            _getComplexMagnitude(MDaRefF, MDaRefFM);// magnitude espectra experimental image
-            completeFourierShift(MDaRefFM, MDaRefFMs);// shift spectrum
-            MDaRefFMs_polar = imToPolar(MDaRefFMs, n_rad, n_ang);// polar representation of magnitude
-            selectBands(MDaRefFMs_polar, MDaRefFMs_polarPart, n_bands, startBand, n_ang); // select bands
-            _applyFourier(MDaRefFMs_polarPart,MDaRefFMs_polarF); // apply fourier
-
             // computing relative rotation and traslation
-            ccMatrix(MDaInFMs_polarF, MDaRefFMs_polarF, ccMatrixRot);// cross-correlation matrix
+            ccMatrix(MDaInFMs_polarF, vecMDaRefFMs_polarF[countRefImg], ccMatrixRot);// cross-correlation matrix
             maxByColumn(ccMatrixRot, ccVectorRot, n_bands, n_ang); // ccvMatrix to ccVector
             peaksFound = 0;
             std::vector<double>().swap(cand); // alternative to cand.clear(), which wasn't working
             rotCandidates(ccVectorRot, cand, n_ang, &peaksFound); // compute condidates set {\theta + 180}
 
             // bestCand method return best cand rotation and its correspondient tx, ty and coeff
-            bestCand(MDaIn, MDaInF, MDaRef, cand, peaksFound, &bestCandVar, &Tx, &Ty, &bestCoeff);
+            bestCand(MDaIn, MDaInF, vecMDaRef[countRefImg], cand, peaksFound, &bestCandVar, &Tx, &Ty, &bestCoeff);
 
             // all the results are storaged for posterior partial_sort
-            Idx[countRefImg] = k++;
+            Idx[countRefImg] = k++; // revisar esta asignación
             candidatesFirstLoop[countRefImg] = countRefImg+1;
             candidatesFirstLoopCoeff[countRefImg] = bestCoeff;
             bestTx[countRefImg] = Tx;
@@ -221,23 +229,17 @@ void ProgAngularAssignmentMag::run()
         MultidimArray<double>                   MDaRefTrans;
 
         for (int i = 0; i < nCand; i++){
-            mdRef.getRow(rowRef, size_t(candidatesFirstLoop[ Idx[i] ]));
-            rowRef.getValue(MDL_IMAGE, fnImgRef);
-            // En lugar de hacer todo esto podria almacenar los candidatos a rotación del primer loop
-            // processing reference image
-            ImgRef.read(fnImgRef);
-            MDaRef = ImgRef();
             // aplicar dicha rotación a la imagen referencia y volver a calcular rotación y traslación
             double rotVal = bestRot[ Idx[i] ];
             double trasXval = bestTx[ Idx[i] ];
             double trasYval = bestTy[ Idx[i] ];
-            _applyRotationAndShift(MDaRef, rotVal, trasXval, trasYval, MDaRefTrans);
-            _applyFourier(MDaRefTrans, MDaRefF);// fourier experimental image (genera copia?)
+            _applyRotationAndShift(vecMDaRef[ Idx[i] ], rotVal, trasXval, trasYval, MDaRefTrans);
+            _applyFourierImage(MDaRefTrans, MDaRefF);// fourier experimental image (genera copia?)
             _getComplexMagnitude(MDaRefF, MDaRefFM);// magnitude espectra experimental image
             completeFourierShift(MDaRefFM, MDaRefFMs);// shift spectrum
             MDaRefFMs_polar = imToPolar(MDaRefFMs, n_rad, n_ang);// polar representation of magnitude
             selectBands(MDaRefFMs_polar, MDaRefFMs_polarPart, n_bands, startBand, n_ang); // select bands
-            _applyFourier(MDaRefFMs_polarPart,MDaRefFMs_polarF); // apply fourier
+            _applyFourierImage(MDaRefFMs_polarPart, MDaRefFMs_polarF, n_ang); // apply fourier
 
             // computing relative rotation and traslation
             ccMatrix(MDaInFMs_polarF, MDaRefFMs_polarF, ccMatrixRot);// cross-correlation matrix
@@ -287,7 +289,7 @@ void ProgAngularAssignmentMag::run()
 
     delete iterExp;
     delete iterRef;
-    transformer.cleanup();
+    transformerImage.cleanup();
 
     //std::cout << "elapsed time (min): "    << (double)((fin - inicio)/CLOCKS_PER_SEC)/60. << std::endl;
     double eTime = (double)((fin - inicio)/CLOCKS_PER_SEC);
@@ -374,13 +376,13 @@ void ProgAngularAssignmentMag::_writeTestFile(MultidimArray<double> &data, const
     outFile.close();
 }
 
-/* get COMPLETE fourier spectrum. It should be changed for half */
-void ProgAngularAssignmentMag::_applyFourier(MultidimArray<double> &data,
+/* get COMPLETE fourier spectrum of Images. It should be changed for half */
+void ProgAngularAssignmentMag::_applyFourierImage(MultidimArray<double> &data,
                                              MultidimArray< std::complex<double> > &FourierData){
 
 
     // esta opción retorna una copia completa (espero más adelante usar solo la mitad y no hacer copia)
-    transformer.completeFourierTransform(data, FourierData);
+    transformerImage.completeFourierTransform(data, FourierData);
 
     // transformer.FourierTransform(data, FourierData, false);
     // transformer.cleanup();
@@ -394,6 +396,12 @@ void ProgAngularAssignmentMag::_applyFourier(MultidimArray<double> &data,
      * FOR_ALL_ELEMENTS_IN_ARRAY3D(Vmag)
      *     Vmag(k,i,j)=20*log10(abs(Vfft(k,i,j)));
     */
+}
+
+/* get COMPLETE fourier spectrum of polarRepresentation of Magnitude. It should be changed for half */
+void ProgAngularAssignmentMag::_applyFourierImage(MultidimArray<double> &data,
+                                             MultidimArray< std::complex<double> > &FourierData, const size_t &ang){
+    transformerPolarImage.completeFourierTransform(data, FourierData);
 }
 
 /* get magnitude of fourier spectrum */
@@ -662,7 +670,7 @@ void ProgAngularAssignmentMag::bestCand(/*inputs*/
         rotVar = -1. * cand[i];
         _applyRotation(MDaRef,rotVar,MDaRefRot); // rotate reference images
         //std::cout << "rotacion: " << rotVar << std::endl;
-        _applyFourier(MDaRefRot,MDaRefRotF); // fourier --> F2_r
+        _applyFourierImage(MDaRefRot,MDaRefRotF); // fourier --> F2_r
         // computing relative traslation of rotated reference
         ccMatrix(MDaInF, MDaRefRotF, ccMatrixShift);// cross-correlation matrix
         maxByColumn(ccMatrixShift, ccVectorTx, Ydim, Xdim); // ccvMatrix to ccVector
@@ -820,7 +828,7 @@ void ProgAngularAssignmentMag::bestCand2(/*inputs*/
         rotVar = -1. * cand[i];
         _applyRotation(MDaRef,rotVar,MDaRefRot); // rotate reference images
         //std::cout << "rotacion: " << rotVar << std::endl;
-        _applyFourier(MDaRefRot,MDaRefRotF); // fourier --> F2_r
+        _applyFourierImage(MDaRefRot,MDaRefRotF); // fourier --> F2_r
         // computing relative traslation of rotated reference
         ccMatrix(MDaInF, MDaRefRotF, ccMatrixShift);// cross-correlation matrix
         maxByColumn(ccMatrixShift, ccVectorTx, Ydim, Xdim); // ccvMatrix to ccVector

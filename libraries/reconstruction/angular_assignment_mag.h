@@ -51,11 +51,21 @@ public: // Internal members
     // Metadata with input images and input volumes
     MetaData mdIn, mdRef;
 
+    // vector of reference images
+    std::vector< MultidimArray<double> > vecMDaRef;
+
+    // vector of Fourier of reference images
+    std::vector< MultidimArray< std::complex<double> > > vecMDaRefF;
+
+    // vector of Fourier of polar representation of magnitude spectrum of reference images
+    std::vector< MultidimArray< std::complex<double> > > vecMDaRefFMs_polarF;
+
     // Size of the images
     size_t Xdim, Ydim;
 
     // Transformer
-    FourierTransformer transformer;
+    FourierTransformer transformerImage, transformerPolarImage;
+
 
     // "delay axes"
     MultidimArray<double> axRot;
@@ -83,7 +93,8 @@ private:
     double mean_of_products(MultidimArray<double> &data1, MultidimArray<double> &data2);
     void _writeTestFile(MultidimArray<double> &data, const char *fileName);
     void _writeTestFile(MultidimArray<double> &data, const char *fileName, size_t nFil, size_t nCol);
-    void _applyFourier(MultidimArray<double> &data, MultidimArray<std::complex<double> > &FourierData);
+    void _applyFourierImage(MultidimArray<double> &data, MultidimArray<std::complex<double> > &FourierData);
+    void _applyFourierImage(MultidimArray<double> &data, MultidimArray<std::complex<double> > &FourierData, const size_t &ang);
     void _getComplexMagnitude(MultidimArray<std::complex<double> > &FourierData, MultidimArray<double> &FourierMag);
     MultidimArray<double> imToPolar(MultidimArray<double> &cartIm, const size_t &rad, const size_t &ang);
     double interpolate(MultidimArray<double> &cartIm, double &x_coord, double &y_coord);
@@ -104,7 +115,7 @@ private:
 };
 //@}
 
-/*
+
 
 //            // test  write MdaRef
 //            _writeTestFile(MDaRef,"/home/jeison/Escritorio/t_ref.txt");
@@ -139,19 +150,14 @@ private:
 //            pearsonCorr(MDaIn, MDaRef,coeff);
 //            std::cout << "coeff: " << coeff << std::endl;
 
-*/
-
 //                // test de organización
 //                int ints[] = {0,1,2,3,4,5};
 //                std::vector<int> idx(ints,ints + sizeof(ints)/sizeof(int));
 //                double ints2[] = {1.3,2.5,5.2,8.3,16.6,4.3};
 //                std::vector<double> Ordidx(ints2,ints2 + sizeof(ints2)/sizeof(double));
-
 //                std::cout << "before order\n";
 //                for(int k = 0; k < 6; k++)
 //                    std::cout << "idx("<<k<<")= "<<idx[k]<<"\t OrdIdx("<<k<<")= "<<Ordidx[k]<<std::endl;
-
-
 //                std::partial_sort(idx.begin(), idx.begin()+3, idx.end(), [&](int i, int j){return ints2[i] > ints2[j]; });
 //                std::cout << "after partial order\n";
 //                for(int k = 0; k < 6; k++)
@@ -174,14 +180,12 @@ private:
 //                << "\t    realTx: "         << realTx
 //                << "\t    realTy: "         << realTy << "\n";
 //        outfile << "\n";
-
 // clean candidates
 //        std::vector<double>().swap(candidatesFirstLoopCoeff);
 //        std::vector<unsigned int>().swap(candidatesFirstLoop);
 
-
-
-// en el ciclo debo elegir los mejores candidatos (anterior)
+//            // en el ciclo debo elegir los mejores candidatos (anterior)
+//            // antes de incluir partial_sort
 //            double thres = tempCoeff - 0.02; //before tempCoeff * (1. - 0.03); // 0.02 -- 0.01
 //            if(bestCoeff > thres){
 //                tempCoeff = bestCoeff;
@@ -192,5 +196,37 @@ private:
 //                bestTy.push_back(Ty);
 //                bestRot.push_back(bestCandVar);
 //            }
+
+//            // lectura de imagenes referencia dentro del primer ciclo
+//            mdRef.getRow(rowRef, size_t(countRefImg+1) /*iterRef->objId*/);
+//            rowRef.getValue(MDL_IMAGE, fnImgRef);
+//            // processing reference image
+//            ImgRef.read(fnImgRef);
+//            MDaRef = ImgRef();
+//            _applyFourier(MDaRef, MDaRefF);// fourier experimental image (genera copia?)
+//            _getComplexMagnitude(MDaRefF, MDaRefFM);// magnitude espectra experimental image
+//            completeFourierShift(MDaRefFM, MDaRefFMs);// shift spectrum
+//            MDaRefFMs_polar = imToPolar(MDaRefFMs, n_rad, n_ang);// polar representation of magnitude
+//            selectBands(MDaRefFMs_polar, MDaRefFMs_polarPart, n_bands, startBand, n_ang); // select bands
+//            _applyFourier(MDaRefFMs_polarPart,MDaRefFMs_polarF); // apply fourier
+
+//            // lectura de imágenes referencia en el segundo ciclo
+//            mdRef.getRow(rowRef, size_t(candidatesFirstLoop[ Idx[i] ]));
+//            rowRef.getValue(MDL_IMAGE, fnImgRef);
+//            // En lugar de hacer todo esto podria almacenar los candidatos a rotación del primer loop
+//            // processing reference image
+//            ImgRef.read(fnImgRef);
+//            MDaRef = ImgRef();
+//            // aplicar dicha rotación a la imagen referencia y volver a calcular rotación y traslación
+//            double rotVal = bestRot[ Idx[i] ];
+//            double trasXval = bestTx[ Idx[i] ];
+//            double trasYval = bestTy[ Idx[i] ];
+//            _applyRotationAndShift(MDaRef, rotVal, trasXval, trasYval, MDaRefTrans);
+//            _applyFourier(MDaRefTrans, MDaRefF);// fourier experimental image (genera copia?)
+//            _getComplexMagnitude(MDaRefF, MDaRefFM);// magnitude espectra experimental image
+//            completeFourierShift(MDaRefFM, MDaRefFMs);// shift spectrum
+//            MDaRefFMs_polar = imToPolar(MDaRefFMs, n_rad, n_ang);// polar representation of magnitude
+//            selectBands(MDaRefFMs_polar, MDaRefFMs_polarPart, n_bands, startBand, n_ang); // select bands
+//            _applyFourier(MDaRefFMs_polarPart,MDaRefFMs_polarF); // apply fourier
 
 #endif
