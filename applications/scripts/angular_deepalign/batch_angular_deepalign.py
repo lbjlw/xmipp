@@ -44,7 +44,11 @@ def generateData(fnXmd, maxShift, maxPsi, mode, Nrepeats=30):
             c = math.cos(psi)
             s = math.sin(psi)
             M = np.float32([[c,s,(1-c)*Xdim2-s*Ydim2+deltaX],[-s,c,s*Xdim2+(1-c)*Ydim2+deltaY]])
-            X[idx,:,:,0] = cv2.warpAffine(I.getData(),M,(Xdim,Ydim)) + np.random.normal(0.0, 10.0, [Xdim, Xdim])
+            X[idx,:,:,0] = cv2.warpAffine(I.getData(),M,(Xdim,Ydim)) + np.random.normal(0.0, 2.0, [Xdim, Xdim])
+	    #A = xmippLib.Image()
+	    #A.setData(X[idx,:,:,0])
+	    #A.write('./aqui.stk')
+	    #aaaaaaaa
 
             if mode=="psi":
                 Y[idx,0]=c

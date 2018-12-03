@@ -54,7 +54,7 @@ def loadData(mdIn, fnXmd, maxShift, maxPsi):
 #	strFnOut = ('%06d@'+fnODir)%(idx+1)
 #	newImage.write(os.path.join(strFnOut,'inputImages.stk'))
 
-	X[idx,:,:,0] = I.getData() + np.random.normal(0.0, 10.0, [Xdim, Xdim])
+	X[idx,:,:,0] = I.getData() #+ np.random.normal(0.0, 10.0, [Xdim, Xdim])
         idx+=1
 #        print("Ground Truth: psiDeg=", psiDeg," c=",c," s=",s," deltaX=",deltaX," deltaY=", deltaY)
 #    mdIn.write(fnXmd)
