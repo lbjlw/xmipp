@@ -210,6 +210,9 @@ class ScriptParticleBoxsize(xmipp3.XmippScript):
                 ]
                 micrograph_predictions= [float(model.predict(x)) for x in Xs]
                 predictions.append(np.median(micrograph_predictions))
+                print(" - estimated boxSize for %s: %d"
+                      % (os.path.basename(micrograph_path),
+                         int(np.round(np.median(micrograph_predictions)))))
         self.particle_boxsize = int(np.round(np.median(predictions)))
         with open(output_file, 'w') as fp:
             fp.write(str(self.particle_boxsize) + '\n')
