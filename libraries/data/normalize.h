@@ -30,6 +30,7 @@
 #include <core/xmipp_image.h>
 #include <data/mask.h>
 #include <core/xmipp_error.h>
+#include <data/ctf.h>
 
 /// @defgroup Normalize Normalization of images and volumes
 /// @ingroup DataLibrary
@@ -179,6 +180,12 @@ void normalize_NewXmipp(MultidimArray<double> &I, const MultidimArray<int> &bg_m
 disabled. However, a positivity constraint can be applied on the 3D
 volume.
 */
+void normalize_NewXmippCtf(MultidimArray<double> &I, double Ts, CTFDescription &prm);
+
+/**
+ * Normalization using the CTF
+ *
+ */
 void normalize_NewXmipp2(MultidimArray<double> &I, const MultidimArray<int> &bg_mask);
 
 /** Removal of inclined background densities (ramps).
@@ -207,6 +214,7 @@ protected:
         OLDXMIPP,
         NEAR_OLDXMIPP,
         NEWXMIPP,
+		NEWXMIPPCTF,
         MICHAEL,
         NEWXMIPP2,
         RANDOM,
@@ -287,9 +295,15 @@ protected:
      */
     Mask mask_prm;
 
+    double Ts;
+
 public:
     // Mean and standard deviation of the image 0. Used for tomography
     double mu0, sigma0;
+    // CTF for normaalize with CTF
+    CTFDescription ctf;
+    bool hasCtf;
+    FileName Ctf;
 
 protected:
     void defineParams();

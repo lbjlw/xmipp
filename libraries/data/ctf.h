@@ -1293,6 +1293,7 @@ public:
 
     /** Force physical meaning.*/
     void forcePhysicalMeaning();
-};
 
+    double getEnergy(int Ydim, int Xdim, double Ts=-1.0);
+};
 #endif

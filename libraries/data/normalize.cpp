@@ -31,6 +31,7 @@
 #include "normalize.h"
 #include <core/metadata.h>
 #include <core/xmipp_image_generic.h>
+#include "ctf.h"
 
 /* Normalizations ---------------------------------------------------------- */
 void normalize_OldXmipp(MultidimArray<double> &I)
@@ -241,6 +242,15 @@ void normalize_NewXmipp(MultidimArray<double> &I, const MultidimArray<int> &bg_m
     DIRECT_MULTIDIM_ELEM(I,n)=(DIRECT_MULTIDIM_ELEM(I,n)-avgbg)*istddevbg;
 }
 
+void normalize_NewXmippCtf(MultidimArray<double> &I, double Ts, CTFDescription &prm)
+{
+	double ienergy = 1.0/prm.getEnergy(YSIZE(I),XSIZE(I), Ts);
+	std::cout<< "Energy =" << 1.0/ienergy << std::endl;
+	FOR_ALL_DIRECT_ELEMENTS_IN_MULTIDIMARRAY(I)
+	DIRECT_MULTIDIM_ELEM(I,n)*=ienergy;
+
+}
+
 void normalize_NewXmipp2(MultidimArray<double> &I, const MultidimArray<int> &bg_mask)
 {
     double avg=0, stddev, min, max;
@@ -447,6 +457,7 @@ void ProgNormalize::defineParams()
     addParamsLine("           NewXmipp            : I=(I-m(bg))/stddev(bg)");
     addParamsLine("                               : Avg(bg)=0, Stddev(I)=1");
     addParamsLine("                               : Positivity constraints can be added in reconstruction");
+    addParamsLine("           NewXmippCtf         : Use the energy of the image to normalize");
     addParamsLine("           Tomography          : I=(I-mean(I))/(stddev(I)*cos(tilt))");
     addParamsLine("                               : does not need background, it assumes the tilt series is vertically aligned");
     addParamsLine("                               : Similar to OldXmipp but with an extra division by the cos(tilt)");
@@ -459,6 +470,8 @@ void ProgNormalize::defineParams()
     addParamsLine("           Random                 : I=aI+b");
     addParamsLine("           Ramp                   : Subtract ramp and then NewXmipp");
     addParamsLine("           Neighbour              : Replace pixels in the background with random noise");
+    addParamsLine(" [--Tm <Ts=0.0>]                  : Sampling rate of the images");
+    addParamsLine(" [--ctfparam <ctf=0.0>]                  : Sampling rate of the images");
     addParamsLine(" [--invert]                       : Invert contrast.");
     addParamsLine(" [--thr_black_dust <sblack=-3.5>] : Remove black dust particles with sigma threshold sblack.");
     addParamsLine(" [--thr_white_dust <swhite=3.5>]  : Remove white dust particles with sigma threshold swhite.");
@@ -498,6 +511,8 @@ void ProgNormalize::readParams()
         method = NEAR_OLDXMIPP;
     else if (aux == "NewXmipp")
         method = NEWXMIPP;
+    else if (aux == "NewXmippCtf")
+        method = NEWXMIPPCTF;
     else if (aux == "NewXmipp2")
         method = NEWXMIPP2;
     else if (aux == "Michael")
@@ -530,9 +545,13 @@ void ProgNormalize::readParams()
     thresh_white_dust = getDoubleParam("--thr_white_dust");
     thresh_neigh      = getDoubleParam("--thr_neigh");
 
+    Ts                = getDoubleParam("--Tm");
+    hasCtf            = checkParam("--ctfparam");
+    if (hasCtf)
+    	Ctf = getParam("--ctfparam");
     // Get background mask
     background_mode = NOBACKGROUND;
-    if (method == NEWXMIPP || method == NEWXMIPP2 || method == MICHAEL ||
+    if (method == NEWXMIPP || method == NEWXMIPPCTF || method == NEWXMIPP2 || method == MICHAEL ||
         method == NEAR_OLDXMIPP || method == RAMP || method == NEIGHBOUR)
     {
         enable_mask = checkParam("--mask");
@@ -588,6 +607,9 @@ void ProgNormalize::show()
     case NEWXMIPP:
         std::cout << "NewXmipp\n";
         break;
+    case NEWXMIPPCTF:
+		std::cout << "NewXmippCtf\n";
+		break;
     case NEWXMIPP2:
         std::cout << "NewXmipp2\n";
         break;
@@ -615,7 +637,7 @@ void ProgNormalize::show()
         break;
     }
 
-    if (method == NEWXMIPP || method == NEWXMIPP2 ||
+    if (method == NEWXMIPP || method == NEWXMIPPCTF|| method == NEWXMIPP2 ||
         method == NEAR_OLDXMIPP || method == MICHAEL ||
         method == RAMP || method == NEIGHBOUR)
     {
@@ -742,6 +764,19 @@ void ProgNormalize::processImage(const FileName &fnImg, const FileName &fnImgOut
         I.read(fnImg);
     I().setXmippOrigin();
 
+    if (method==NEWXMIPPCTF)
+
+    {
+    	//std::cout << "ENTRA 1" << std::endl;
+    	ctf.read(Ctf,true);
+    	//std::cout << ctf.DeltafU << std::endl;
+		if ((round(ctf.DeltafU) == 0.0))
+		{
+			//std::cout << "ENTRA 3" << std::endl;
+			method=NEWXMIPP;
+		}
+    }
+
     MultidimArray<double> &img=I();
 
     if (apply_geo)
@@ -806,6 +841,10 @@ void ProgNormalize::processImage(const FileName &fnImg, const FileName &fnImgOut
         break;
     case NEWXMIPP:
         normalize_NewXmipp(img, bg_mask);
+        break;
+    case NEWXMIPPCTF:
+        normalize_NewXmipp(img, bg_mask);
+        normalize_NewXmippCtf(img, Ts, ctf);
         break;
     case NEWXMIPP2:
         normalize_NewXmipp2(img, bg_mask);

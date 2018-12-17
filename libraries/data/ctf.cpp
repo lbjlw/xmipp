@@ -1818,4 +1818,33 @@ void CTFDescription::forcePhysicalMeaning()
 #undef DEBUG
 
 
-
+double CTFDescription::getEnergy(int Ydim, int Xdim, double Ts)
+{
+	double energy=0.0;
+    if (Ts<0)
+    	Ts=Tm;
+    //std::cout << "Ts =" << Ts << std::endl;
+    produceSideInfo();
+    double iTs=1.0/Ts;
+    for (int i=0; i<Ydim; ++i)
+    {
+    	double wy;
+    	FFT_IDX2DIGFREQ(i, Ydim, wy);
+        double fy=wy*iTs;
+    	for (int j=0; j<Xdim; ++j)
+    	{
+        	double wx;
+        	FFT_IDX2DIGFREQ(j, Xdim, wx);
+            double fx=wx*iTs;
+			precomputeValues(fx, fy);
+			double ctf= getValueAt();
+			energy+=ctf*ctf;
+    	}
+    }
+    double deltawx=2/(Ts*Xdim); // Delta w in the PSD integral
+    double deltawy=2/(Ts*Ydim);
+    /*std::cout << "DeltaWx =" << deltawx << std::endl;
+    std::cout << "DeltaWy =" << deltawy << std::endl;
+    std::cout << "energy =" << energy << std::endl;*/
+    return energy*(deltawx*deltawy);
+}
